@@ -1,0 +1,1703 @@
+{
+  "_comment": "Player statistics storage - automatically managed by PlayerStats.js",
+  "706155855934128228": {
+    "discordId": "706155855934128228",
+    "username": "moithas",
+    "stats": {
+      "classic": {
+        "gamesPlayed": 11,
+        "gamesWon": 9,
+        "handsPlayed": 77,
+        "nilBids": 9,
+        "nilSuccesses": 8,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 27,
+        "totalPoints": 5150,
+        "totalTricksWon": 34,
+        "highestScore": 630
+      },
+      "lastPlayed": "2025-12-28T22:38:29.913Z",
+      "cutthroat3": {
+        "gamesPlayed": 6,
+        "gamesWon": 5,
+        "handsPlayed": 33,
+        "nilBids": 1,
+        "nilSuccesses": 1,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 23,
+        "totalPoints": 2050,
+        "totalTricksWon": 33,
+        "highestScore": 390
+      },
+      "cutthroat4": {
+        "gamesPlayed": 0,
+        "gamesWon": 0,
+        "handsPlayed": 0,
+        "nilBids": 0,
+        "nilSuccesses": 0,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 0,
+        "totalPoints": 0,
+        "totalTricksWon": 0,
+        "highestScore": 0
+      }
+    },
+    "opponentProfile": {
+      "totalBids": 161,
+      "bidSum": 574,
+      "bidsByHandStrength": [
+        {
+          "strength": 8,
+          "bid": 0,
+          "timestamp": 1766716933368
+        },
+        {
+          "strength": 6,
+          "bid": 0,
+          "timestamp": 1766726971378
+        },
+        {
+          "strength": 13,
+          "bid": 3,
+          "timestamp": 1766727406299
+        },
+        {
+          "strength": 15,
+          "bid": 2,
+          "timestamp": 1766728346240
+        },
+        {
+          "strength": 18,
+          "bid": 5,
+          "timestamp": 1766730673793
+        },
+        {
+          "strength": 13,
+          "bid": 3,
+          "timestamp": 1766731073291
+        },
+        {
+          "strength": 13,
+          "bid": 3,
+          "timestamp": 1766731073298
+        },
+        {
+          "strength": 12,
+          "bid": 3,
+          "timestamp": 1766806647118
+        },
+        {
+          "strength": 14,
+          "bid": 3,
+          "timestamp": 1766807448601
+        },
+        {
+          "strength": 9,
+          "bid": 0,
+          "timestamp": 1766808019545
+        },
+        {
+          "strength": 8,
+          "bid": 3,
+          "timestamp": 1766808656277
+        },
+        {
+          "strength": 8,
+          "bid": 3,
+          "timestamp": 1766809422594
+        },
+        {
+          "strength": 13,
+          "bid": 4,
+          "timestamp": 1766809984769
+        },
+        {
+          "strength": 12,
+          "bid": 3,
+          "timestamp": 1766810637522
+        },
+        {
+          "strength": 18,
+          "bid": 4,
+          "timestamp": 1766811391756
+        },
+        {
+          "strength": 16,
+          "bid": 4,
+          "timestamp": 1766811942308
+        },
+        {
+          "strength": 16,
+          "bid": 4,
+          "timestamp": 1766811942323
+        },
+        {
+          "strength": 12,
+          "bid": 4,
+          "timestamp": 1766891134782
+        },
+        {
+          "strength": 14,
+          "bid": 3,
+          "timestamp": 1766891868015
+        },
+        {
+          "strength": 16,
+          "bid": 3,
+          "timestamp": 1766892580252
+        },
+        {
+          "strength": 15,
+          "bid": 2,
+          "timestamp": 1766893265419
+        },
+        {
+          "strength": 13,
+          "bid": 3,
+          "timestamp": 1766894257582
+        },
+        {
+          "strength": 21,
+          "bid": 5,
+          "timestamp": 1766895503525
+        },
+        {
+          "strength": 8,
+          "bid": 3,
+          "timestamp": 1766896214560
+        },
+        {
+          "strength": 18,
+          "bid": 4,
+          "timestamp": 1766897035569
+        },
+        {
+          "strength": 18,
+          "bid": 4,
+          "timestamp": 1766897035719
+        },
+        {
+          "strength": 11,
+          "bid": 2,
+          "timestamp": 1766953831009
+        },
+        {
+          "strength": 11,
+          "bid": 3,
+          "timestamp": 1766954246498
+        },
+        {
+          "strength": 19,
+          "bid": 5,
+          "timestamp": 1766954763499
+        },
+        {
+          "strength": 18,
+          "bid": 4,
+          "timestamp": 1766955278050
+        },
+        {
+          "strength": 10,
+          "bid": 2,
+          "timestamp": 1766955678344
+        },
+        {
+          "strength": 15,
+          "bid": 3,
+          "timestamp": 1766956194215
+        },
+        {
+          "strength": 12,
+          "bid": 4,
+          "timestamp": 1766956587641
+        },
+        {
+          "strength": 15,
+          "bid": 3,
+          "timestamp": 1766957163318
+        },
+        {
+          "strength": 15,
+          "bid": 4,
+          "timestamp": 1766957618117
+        },
+        {
+          "strength": 11,
+          "bid": 2,
+          "timestamp": 1766958348536
+        },
+        {
+          "strength": 19,
+          "bid": 4,
+          "timestamp": 1766958787912
+        },
+        {
+          "strength": 13,
+          "bid": 2,
+          "timestamp": 1766959382149
+        },
+        {
+          "strength": 5,
+          "bid": 0,
+          "timestamp": 1766961509903
+        },
+        {
+          "strength": 5,
+          "bid": 0,
+          "timestamp": 1766961509910
+        },
+        {
+          "strength": 13,
+          "bid": 4,
+          "timestamp": 1766974573923
+        },
+        {
+          "strength": 9,
+          "bid": 0,
+          "timestamp": 1766975285465
+        },
+        {
+          "strength": 8,
+          "bid": 0,
+          "timestamp": 1766976038830
+        },
+        {
+          "strength": 12,
+          "bid": 3,
+          "timestamp": 1766977551753
+        },
+        {
+          "strength": 11,
+          "bid": 3,
+          "timestamp": 1766978399691
+        },
+        {
+          "strength": 16,
+          "bid": 2,
+          "timestamp": 1766979324789
+        },
+        {
+          "strength": 13,
+          "bid": 3,
+          "timestamp": 1767042313161
+        },
+        {
+          "strength": 7,
+          "bid": 0,
+          "timestamp": 1767042765249
+        },
+        {
+          "strength": 16,
+          "bid": 4,
+          "timestamp": 1767043120250
+        },
+        {
+          "strength": 14,
+          "bid": 4,
+          "timestamp": 1767043659969
+        }
+      ],
+      "nilAttempts": 18,
+      "nilSuccesses": 13,
+      "conservativeNilBidder": true,
+      "leadsHigh": 0,
+      "leadsLow": 0,
+      "aggressivePlay": 49,
+      "conservativePlay": 104,
+      "helpsPartnerNil": 0,
+      "ignoresPartnerNil": 7,
+      "biddingStyle": "aggressive",
+      "playingStyle": "unknown",
+      "nilTendency": "occasional",
+      "teamPlayer": "poor",
+      "handsObserved": 161,
+      "gamesObserved": 15,
+      "lastUpdated": 1767043659969
+    }
+  },
+  "956360653680037920": {
+    "discordId": "956360653680037920",
+    "username": "zebritbrat",
+    "stats": {
+      "classic": {
+        "gamesPlayed": 7,
+        "gamesWon": 2,
+        "handsPlayed": 46,
+        "nilBids": 4,
+        "nilSuccesses": 3,
+        "blindNilBids": 1,
+        "blindNilSuccesses": 0,
+        "totalBags": 37,
+        "totalPoints": 1320,
+        "totalTricksWon": 23,
+        "highestScore": 510
+      },
+      "cutthroat3": {
+        "gamesPlayed": 2,
+        "gamesWon": 1,
+        "handsPlayed": 19,
+        "nilBids": 1,
+        "nilSuccesses": 0,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 8,
+        "totalPoints": 580,
+        "totalTricksWon": 14,
+        "highestScore": 340
+      },
+      "cutthroat4": {
+        "gamesPlayed": 0,
+        "gamesWon": 0,
+        "handsPlayed": 0,
+        "nilBids": 0,
+        "nilSuccesses": 0,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 0,
+        "totalPoints": 0,
+        "totalTricksWon": 0,
+        "highestScore": 0
+      },
+      "lastPlayed": "2025-12-28T04:43:55.699Z"
+    },
+    "opponentProfile": {
+      "totalBids": 78,
+      "bidSum": 274,
+      "bidsByHandStrength": [
+        {
+          "strength": 9,
+          "bid": 3,
+          "timestamp": 1766090245255
+        },
+        {
+          "strength": 11,
+          "bid": 2,
+          "timestamp": 1766091218753
+        },
+        {
+          "strength": 9,
+          "bid": 3,
+          "timestamp": 1766114089647
+        },
+        {
+          "strength": 26,
+          "bid": 7,
+          "timestamp": 1766114480819
+        },
+        {
+          "strength": 20,
+          "bid": 8,
+          "timestamp": 1766114960194
+        },
+        {
+          "strength": 20,
+          "bid": 5,
+          "timestamp": 1766115494317
+        },
+        {
+          "strength": 12,
+          "bid": 4,
+          "timestamp": 1766192666887
+        },
+        {
+          "strength": 15,
+          "bid": 6,
+          "timestamp": 1766196050718
+        },
+        {
+          "strength": 20,
+          "bid": 7,
+          "timestamp": 1766196449812
+        },
+        {
+          "strength": 13,
+          "bid": 5,
+          "timestamp": 1766197066717
+        },
+        {
+          "strength": 14,
+          "bid": 5,
+          "timestamp": 1766197638399
+        },
+        {
+          "strength": 14,
+          "bid": 5,
+          "timestamp": 1766197638405
+        },
+        {
+          "strength": 15,
+          "bid": 5,
+          "timestamp": 1766799741730
+        },
+        {
+          "strength": 7,
+          "bid": 0,
+          "timestamp": 1766800088074
+        },
+        {
+          "strength": 15,
+          "bid": 6,
+          "timestamp": 1766800390038
+        },
+        {
+          "strength": 14,
+          "bid": 5,
+          "timestamp": 1766800688857
+        },
+        {
+          "strength": 22,
+          "bid": 6,
+          "timestamp": 1766800991141
+        },
+        {
+          "strength": 8,
+          "bid": 3,
+          "timestamp": 1766801307996
+        },
+        {
+          "strength": 16,
+          "bid": 4,
+          "timestamp": 1766801632261
+        },
+        {
+          "strength": 20,
+          "bid": 5,
+          "timestamp": 1766801951198
+        },
+        {
+          "strength": 12,
+          "bid": 4,
+          "timestamp": 1766802429420
+        },
+        {
+          "strength": 22,
+          "bid": 8,
+          "timestamp": 1766802744034
+        },
+        {
+          "strength": 7,
+          "bid": 3,
+          "timestamp": 1766803055786
+        },
+        {
+          "strength": 18,
+          "bid": 5,
+          "timestamp": 1766803562091
+        },
+        {
+          "strength": 18,
+          "bid": 5,
+          "timestamp": 1766803562092
+        },
+        {
+          "strength": 15,
+          "bid": 4,
+          "timestamp": 1766806647116
+        },
+        {
+          "strength": 13,
+          "bid": 1,
+          "timestamp": 1766807448599
+        },
+        {
+          "strength": 8,
+          "bid": 0,
+          "timestamp": 1766808019534
+        },
+        {
+          "strength": 15,
+          "bid": 4,
+          "timestamp": 1766808656272
+        },
+        {
+          "strength": 13,
+          "bid": 2,
+          "timestamp": 1766809422591
+        },
+        {
+          "strength": 12,
+          "bid": 3,
+          "timestamp": 1766809984768
+        },
+        {
+          "strength": 9,
+          "bid": 1,
+          "timestamp": 1766810637504
+        },
+        {
+          "strength": 11,
+          "bid": 3,
+          "timestamp": 1766811391755
+        },
+        {
+          "strength": 13,
+          "bid": 5,
+          "timestamp": 1766811942308
+        },
+        {
+          "strength": 13,
+          "bid": 5,
+          "timestamp": 1766811942314
+        },
+        {
+          "strength": 14,
+          "bid": 4,
+          "timestamp": 1766891134780
+        },
+        {
+          "strength": 12,
+          "bid": 3,
+          "timestamp": 1766891868014
+        },
+        {
+          "strength": 9,
+          "bid": 3,
+          "timestamp": 1766892580250
+        },
+        {
+          "strength": 11,
+          "bid": 3,
+          "timestamp": 1766893265417
+        },
+        {
+          "strength": 9,
+          "bid": 3,
+          "timestamp": 1766894257580
+        },
+        {
+          "strength": 14,
+          "bid": 4,
+          "timestamp": 1766895503523
+        },
+        {
+          "strength": 19,
+          "bid": 5,
+          "timestamp": 1766896214555
+        },
+        {
+          "strength": 9,
+          "bid": -1,
+          "timestamp": 1766897035569
+        },
+        {
+          "strength": 9,
+          "bid": -1,
+          "timestamp": 1766897035590
+        },
+        {
+          "strength": 14,
+          "bid": 5,
+          "timestamp": 1766974573921
+        },
+        {
+          "strength": 12,
+          "bid": 4,
+          "timestamp": 1766975285464
+        },
+        {
+          "strength": 21,
+          "bid": 6,
+          "timestamp": 1766976038828
+        },
+        {
+          "strength": 9,
+          "bid": 2,
+          "timestamp": 1766977551751
+        },
+        {
+          "strength": 5,
+          "bid": 0,
+          "timestamp": 1766978399689
+        },
+        {
+          "strength": 2,
+          "bid": 0,
+          "timestamp": 1766979324787
+        }
+      ],
+      "nilAttempts": 8,
+      "nilSuccesses": 3,
+      "conservativeNilBidder": false,
+      "leadsHigh": 0,
+      "leadsLow": 0,
+      "aggressivePlay": 39,
+      "conservativePlay": 34,
+      "helpsPartnerNil": 0,
+      "ignoresPartnerNil": 0,
+      "biddingStyle": "aggressive",
+      "playingStyle": "unknown",
+      "nilTendency": "rare",
+      "teamPlayer": "unknown",
+      "handsObserved": 78,
+      "gamesObserved": 7,
+      "lastUpdated": 1766979324787
+    }
+  },
+  "1368419365107535973": {
+    "discordId": "1368419365107535973",
+    "username": "haileyboo97",
+    "stats": {
+      "classic": {
+        "gamesPlayed": 9,
+        "gamesWon": 7,
+        "handsPlayed": 58,
+        "nilBids": 12,
+        "nilSuccesses": 9,
+        "blindNilBids": 1,
+        "blindNilSuccesses": 1,
+        "totalBags": 37,
+        "totalPoints": 4160,
+        "totalTricksWon": 20,
+        "highestScore": 540
+      },
+      "cutthroat3": {
+        "gamesPlayed": 2,
+        "gamesWon": 1,
+        "handsPlayed": 12,
+        "nilBids": 1,
+        "nilSuccesses": 1,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 12,
+        "totalPoints": 620,
+        "totalTricksWon": 12,
+        "highestScore": 360
+      },
+      "cutthroat4": {
+        "gamesPlayed": 0,
+        "gamesWon": 0,
+        "handsPlayed": 0,
+        "nilBids": 0,
+        "nilSuccesses": 0,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 0,
+        "totalPoints": 0,
+        "totalTricksWon": 0,
+        "highestScore": 0
+      },
+      "lastPlayed": "2025-12-28T22:38:29.907Z"
+    },
+    "opponentProfile": {
+      "totalBids": 107,
+      "bidSum": 327,
+      "bidsByHandStrength": [
+        {
+          "strength": 27,
+          "bid": 6,
+          "timestamp": 1766726971371
+        },
+        {
+          "strength": 7,
+          "bid": 0,
+          "timestamp": 1766727406294
+        },
+        {
+          "strength": 13,
+          "bid": 3,
+          "timestamp": 1766728346235
+        },
+        {
+          "strength": 9,
+          "bid": 2,
+          "timestamp": 1766730673788
+        },
+        {
+          "strength": 12,
+          "bid": 0,
+          "timestamp": 1766731073290
+        },
+        {
+          "strength": 12,
+          "bid": 0,
+          "timestamp": 1766731073291
+        },
+        {
+          "strength": 9,
+          "bid": 0,
+          "timestamp": 1766806647112
+        },
+        {
+          "strength": 7,
+          "bid": 2,
+          "timestamp": 1766807448595
+        },
+        {
+          "strength": 4,
+          "bid": 0,
+          "timestamp": 1766808019530
+        },
+        {
+          "strength": 9,
+          "bid": -1,
+          "timestamp": 1766808656268
+        },
+        {
+          "strength": 16,
+          "bid": 4,
+          "timestamp": 1766809422587
+        },
+        {
+          "strength": 13,
+          "bid": 3,
+          "timestamp": 1766809984764
+        },
+        {
+          "strength": 16,
+          "bid": 2,
+          "timestamp": 1766810637477
+        },
+        {
+          "strength": 3,
+          "bid": 0,
+          "timestamp": 1766811391751
+        },
+        {
+          "strength": 11,
+          "bid": 2,
+          "timestamp": 1766811942307
+        },
+        {
+          "strength": 11,
+          "bid": 2,
+          "timestamp": 1766811942308
+        },
+        {
+          "strength": 18,
+          "bid": 4,
+          "timestamp": 1766860802603
+        },
+        {
+          "strength": 20,
+          "bid": 4,
+          "timestamp": 1766891134776
+        },
+        {
+          "strength": 10,
+          "bid": 2,
+          "timestamp": 1766891868010
+        },
+        {
+          "strength": 16,
+          "bid": 3,
+          "timestamp": 1766892580246
+        },
+        {
+          "strength": 10,
+          "bid": 2,
+          "timestamp": 1766893265413
+        },
+        {
+          "strength": 16,
+          "bid": 4,
+          "timestamp": 1766894257575
+        },
+        {
+          "strength": 4,
+          "bid": 0,
+          "timestamp": 1766895503519
+        },
+        {
+          "strength": 7,
+          "bid": 0,
+          "timestamp": 1766896214551
+        },
+        {
+          "strength": 2,
+          "bid": 1,
+          "timestamp": 1766897035567
+        },
+        {
+          "strength": 2,
+          "bid": 1,
+          "timestamp": 1766897035569
+        },
+        {
+          "strength": 20,
+          "bid": 5,
+          "timestamp": 1766953831004
+        },
+        {
+          "strength": 16,
+          "bid": 3,
+          "timestamp": 1766954246493
+        },
+        {
+          "strength": 5,
+          "bid": 2,
+          "timestamp": 1766954763494
+        },
+        {
+          "strength": 18,
+          "bid": 5,
+          "timestamp": 1766955278046
+        },
+        {
+          "strength": 5,
+          "bid": 0,
+          "timestamp": 1766955678340
+        },
+        {
+          "strength": 21,
+          "bid": 4,
+          "timestamp": 1766956194211
+        },
+        {
+          "strength": 14,
+          "bid": 2,
+          "timestamp": 1766956587637
+        },
+        {
+          "strength": 12,
+          "bid": 4,
+          "timestamp": 1766957163313
+        },
+        {
+          "strength": 15,
+          "bid": 3,
+          "timestamp": 1766957618112
+        },
+        {
+          "strength": 15,
+          "bid": 2,
+          "timestamp": 1766958348533
+        },
+        {
+          "strength": 18,
+          "bid": 4,
+          "timestamp": 1766958787908
+        },
+        {
+          "strength": 13,
+          "bid": 3,
+          "timestamp": 1766959382143
+        },
+        {
+          "strength": 8,
+          "bid": 2,
+          "timestamp": 1766961509902
+        },
+        {
+          "strength": 8,
+          "bid": 2,
+          "timestamp": 1766961509903
+        },
+        {
+          "strength": 6,
+          "bid": 1,
+          "timestamp": 1766974573916
+        },
+        {
+          "strength": 17,
+          "bid": 5,
+          "timestamp": 1766975285458
+        },
+        {
+          "strength": 11,
+          "bid": 2,
+          "timestamp": 1766976038824
+        },
+        {
+          "strength": 14,
+          "bid": 4,
+          "timestamp": 1766977551745
+        },
+        {
+          "strength": 15,
+          "bid": 2,
+          "timestamp": 1766978399685
+        },
+        {
+          "strength": 20,
+          "bid": 4,
+          "timestamp": 1766979324782
+        },
+        {
+          "strength": 9,
+          "bid": 3,
+          "timestamp": 1767042313150
+        },
+        {
+          "strength": 22,
+          "bid": 5,
+          "timestamp": 1767042765242
+        },
+        {
+          "strength": 14,
+          "bid": 3,
+          "timestamp": 1767043120246
+        },
+        {
+          "strength": 10,
+          "bid": 0,
+          "timestamp": 1767043659964
+        }
+      ],
+      "nilAttempts": 13,
+      "nilSuccesses": 9,
+      "conservativeNilBidder": true,
+      "leadsHigh": 0,
+      "leadsLow": 0,
+      "aggressivePlay": 48,
+      "conservativePlay": 57,
+      "helpsPartnerNil": 2,
+      "ignoresPartnerNil": 8,
+      "biddingStyle": "aggressive",
+      "playingStyle": "unknown",
+      "nilTendency": "occasional",
+      "teamPlayer": "poor",
+      "handsObserved": 107,
+      "gamesObserved": 9,
+      "lastUpdated": 1767043659964
+    }
+  },
+  "1308549027855466498": {
+    "discordId": "1308549027855466498",
+    "username": "bryn0467",
+    "stats": {
+      "classic": {
+        "gamesPlayed": 4,
+        "gamesWon": 1,
+        "handsPlayed": 28,
+        "nilBids": 0,
+        "nilSuccesses": 0,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 0,
+        "totalPoints": 920,
+        "totalTricksWon": 15,
+        "highestScore": 510
+      },
+      "cutthroat3": {
+        "gamesPlayed": 0,
+        "gamesWon": 0,
+        "handsPlayed": 0,
+        "nilBids": 0,
+        "nilSuccesses": 0,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 0,
+        "totalPoints": 0,
+        "totalTricksWon": 0,
+        "highestScore": 0
+      },
+      "cutthroat4": {
+        "gamesPlayed": 0,
+        "gamesWon": 0,
+        "handsPlayed": 0,
+        "nilBids": 0,
+        "nilSuccesses": 0,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 0,
+        "totalPoints": 0,
+        "totalTricksWon": 0,
+        "highestScore": 0
+      },
+      "lastPlayed": "2025-12-28T04:43:55.814Z"
+    },
+    "opponentProfile": {
+      "totalBids": 35,
+      "bidSum": 109,
+      "bidsByHandStrength": [
+        {
+          "strength": 8,
+          "bid": 1,
+          "timestamp": 1765504150072
+        },
+        {
+          "strength": 20,
+          "bid": 5,
+          "timestamp": 1765504811478
+        },
+        {
+          "strength": 14,
+          "bid": 3,
+          "timestamp": 1765505492382
+        },
+        {
+          "strength": 19,
+          "bid": 4,
+          "timestamp": 1765506261513
+        },
+        {
+          "strength": 16,
+          "bid": 3,
+          "timestamp": 1765507689026
+        },
+        {
+          "strength": 17,
+          "bid": 4,
+          "timestamp": 1765508436897
+        },
+        {
+          "strength": 7,
+          "bid": 1,
+          "timestamp": 1765509984747
+        },
+        {
+          "strength": 7,
+          "bid": 2,
+          "timestamp": 1765511097989
+        },
+        {
+          "strength": 7,
+          "bid": 2,
+          "timestamp": 1765511098006
+        },
+        {
+          "strength": 11,
+          "bid": 3,
+          "timestamp": 1765684625119
+        },
+        {
+          "strength": 16,
+          "bid": 3,
+          "timestamp": 1765685270908
+        },
+        {
+          "strength": 4,
+          "bid": 2,
+          "timestamp": 1765685884405
+        },
+        {
+          "strength": 17,
+          "bid": 4,
+          "timestamp": 1765686602266
+        },
+        {
+          "strength": 9,
+          "bid": 3,
+          "timestamp": 1765687266060
+        },
+        {
+          "strength": 12,
+          "bid": 5,
+          "timestamp": 1765687971033
+        },
+        {
+          "strength": 12,
+          "bid": 4,
+          "timestamp": 1765688588874
+        },
+        {
+          "strength": 11,
+          "bid": 3,
+          "timestamp": 1766088566049
+        },
+        {
+          "strength": 13,
+          "bid": 3,
+          "timestamp": 1766089536559
+        },
+        {
+          "strength": 9,
+          "bid": 2,
+          "timestamp": 1766090245258
+        },
+        {
+          "strength": 16,
+          "bid": 4,
+          "timestamp": 1766091218758
+        },
+        {
+          "strength": 6,
+          "bid": 1,
+          "timestamp": 1766891134783
+        },
+        {
+          "strength": 17,
+          "bid": 3,
+          "timestamp": 1766891868017
+        },
+        {
+          "strength": 9,
+          "bid": 4,
+          "timestamp": 1766892580254
+        },
+        {
+          "strength": 13,
+          "bid": 2,
+          "timestamp": 1766893265420
+        },
+        {
+          "strength": 13,
+          "bid": 3,
+          "timestamp": 1766894257583
+        },
+        {
+          "strength": 15,
+          "bid": 4,
+          "timestamp": 1766895503527
+        },
+        {
+          "strength": 14,
+          "bid": 4,
+          "timestamp": 1766896214563
+        },
+        {
+          "strength": 18,
+          "bid": 3,
+          "timestamp": 1766897035569
+        },
+        {
+          "strength": 18,
+          "bid": 3,
+          "timestamp": 1766897035801
+        },
+        {
+          "strength": 19,
+          "bid": 3,
+          "timestamp": 1766974573924
+        },
+        {
+          "strength": 12,
+          "bid": 3,
+          "timestamp": 1766975285467
+        },
+        {
+          "strength": 15,
+          "bid": 5,
+          "timestamp": 1766976038833
+        },
+        {
+          "strength": 9,
+          "bid": 2,
+          "timestamp": 1766977551755
+        },
+        {
+          "strength": 20,
+          "bid": 5,
+          "timestamp": 1766978399693
+        },
+        {
+          "strength": 11,
+          "bid": 3,
+          "timestamp": 1766979324791
+        }
+      ],
+      "nilAttempts": 0,
+      "nilSuccesses": 0,
+      "conservativeNilBidder": null,
+      "leadsHigh": 0,
+      "leadsLow": 0,
+      "aggressivePlay": 10,
+      "conservativePlay": 23,
+      "helpsPartnerNil": 0,
+      "ignoresPartnerNil": 1,
+      "biddingStyle": "aggressive",
+      "playingStyle": "unknown",
+      "nilTendency": "never",
+      "teamPlayer": "unknown",
+      "handsObserved": 35,
+      "gamesObserved": 2,
+      "lastUpdated": 1766979324791
+    }
+  },
+  "1395272629900021780": {
+    "discordId": "1395272629900021780",
+    "username": "diddy0187_69273",
+    "stats": {
+      "classic": {
+        "gamesPlayed": 2,
+        "gamesWon": 0,
+        "handsPlayed": 10,
+        "nilBids": 0,
+        "nilSuccesses": 0,
+        "blindNilBids": 1,
+        "blindNilSuccesses": 0,
+        "totalBags": 0,
+        "totalPoints": -100,
+        "totalTricksWon": 6,
+        "highestScore": 230
+      },
+      "cutthroat3": {
+        "gamesPlayed": 1,
+        "gamesWon": 1,
+        "handsPlayed": 8,
+        "nilBids": 1,
+        "nilSuccesses": 1,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 2,
+        "totalPoints": 340,
+        "totalTricksWon": 4,
+        "highestScore": 340
+      },
+      "cutthroat4": {
+        "gamesPlayed": 0,
+        "gamesWon": 0,
+        "handsPlayed": 0,
+        "nilBids": 0,
+        "nilSuccesses": 0,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 0,
+        "totalPoints": 0,
+        "totalTricksWon": 0,
+        "highestScore": 0
+      },
+      "lastPlayed": "2025-12-20T02:27:18.402Z"
+    },
+    "opponentProfile": {
+      "totalBids": 10,
+      "bidSum": 29,
+      "bidsByHandStrength": [
+        {
+          "strength": 13,
+          "bid": 3,
+          "timestamp": 1766029529736
+        },
+        {
+          "strength": 6,
+          "bid": 3,
+          "timestamp": 1766030311105
+        },
+        {
+          "strength": 17,
+          "bid": -1,
+          "timestamp": 1766031748087
+        },
+        {
+          "strength": 15,
+          "bid": 4,
+          "timestamp": 1766032964485
+        },
+        {
+          "strength": 15,
+          "bid": 4,
+          "timestamp": 1766032964500
+        },
+        {
+          "strength": 18,
+          "bid": 5,
+          "timestamp": 1766196050715
+        },
+        {
+          "strength": 3,
+          "bid": 0,
+          "timestamp": 1766196449808
+        },
+        {
+          "strength": 12,
+          "bid": 3,
+          "timestamp": 1766197066714
+        },
+        {
+          "strength": 14,
+          "bid": 4,
+          "timestamp": 1766197638398
+        },
+        {
+          "strength": 14,
+          "bid": 4,
+          "timestamp": 1766197638399
+        }
+      ],
+      "nilAttempts": 2,
+      "nilSuccesses": 1,
+      "conservativeNilBidder": null,
+      "leadsHigh": 0,
+      "leadsLow": 0,
+      "aggressivePlay": 1,
+      "conservativePlay": 8,
+      "helpsPartnerNil": 0,
+      "ignoresPartnerNil": 0,
+      "biddingStyle": "aggressive",
+      "playingStyle": "unknown",
+      "nilTendency": "occasional",
+      "teamPlayer": "unknown",
+      "handsObserved": 10,
+      "gamesObserved": 2,
+      "lastUpdated": 1766197638399
+    }
+  },
+  "782646697398501376": {
+    "discordId": "782646697398501376",
+    "username": "maliciousspade",
+    "stats": {
+      "classic": {
+        "gamesPlayed": 23,
+        "gamesWon": 20,
+        "handsPlayed": 248,
+        "nilBids": 31,
+        "nilSuccesses": 22,
+        "blindNilBids": 1,
+        "blindNilSuccesses": 0,
+        "totalBags": 120,
+        "totalPoints": 11500,
+        "totalTricksWon": 79,
+        "highestScore": 610
+      },
+      "cutthroat3": {
+        "gamesPlayed": 0,
+        "gamesWon": 0,
+        "handsPlayed": 0,
+        "nilBids": 0,
+        "nilSuccesses": 0,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 0,
+        "totalPoints": 0,
+        "totalTricksWon": 0,
+        "highestScore": 0
+      },
+      "cutthroat4": {
+        "gamesPlayed": 0,
+        "gamesWon": 0,
+        "handsPlayed": 0,
+        "nilBids": 0,
+        "nilSuccesses": 0,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 0,
+        "totalPoints": 0,
+        "totalTricksWon": 0,
+        "highestScore": 0
+      },
+      "lastPlayed": "2025-12-29T15:15:26.915Z"
+    },
+    "opponentProfile": {
+      "totalBids": 413,
+      "bidSum": 1085,
+      "bidsByHandStrength": [
+        {
+          "strength": 8,
+          "bid": 1,
+          "timestamp": 1766823885356
+        },
+        {
+          "strength": 10,
+          "bid": 3,
+          "timestamp": 1766856251901
+        },
+        {
+          "strength": 9,
+          "bid": 0,
+          "timestamp": 1766856974584
+        },
+        {
+          "strength": 8,
+          "bid": 2,
+          "timestamp": 1766857305848
+        },
+        {
+          "strength": 12,
+          "bid": 2,
+          "timestamp": 1766858109350
+        },
+        {
+          "strength": 22,
+          "bid": 5,
+          "timestamp": 1766859120829
+        },
+        {
+          "strength": 16,
+          "bid": 3,
+          "timestamp": 1766868171045
+        },
+        {
+          "strength": 10,
+          "bid": 2,
+          "timestamp": 1766868609984
+        },
+        {
+          "strength": 9,
+          "bid": 1,
+          "timestamp": 1766870177863
+        },
+        {
+          "strength": 8,
+          "bid": 2,
+          "timestamp": 1766878847207
+        },
+        {
+          "strength": 17,
+          "bid": 4,
+          "timestamp": 1766879652781
+        },
+        {
+          "strength": 11,
+          "bid": 1,
+          "timestamp": 1766890200561
+        },
+        {
+          "strength": 12,
+          "bid": 2,
+          "timestamp": 1766899446456
+        },
+        {
+          "strength": 16,
+          "bid": 3,
+          "timestamp": 1766942757995
+        },
+        {
+          "strength": 10,
+          "bid": 2,
+          "timestamp": 1766943054513
+        },
+        {
+          "strength": 17,
+          "bid": 1,
+          "timestamp": 1766943328365
+        },
+        {
+          "strength": 13,
+          "bid": 3,
+          "timestamp": 1766943594771
+        },
+        {
+          "strength": 8,
+          "bid": 2,
+          "timestamp": 1766944054471
+        },
+        {
+          "strength": 9,
+          "bid": 1,
+          "timestamp": 1766944541313
+        },
+        {
+          "strength": 7,
+          "bid": 1,
+          "timestamp": 1766944820848
+        },
+        {
+          "strength": 15,
+          "bid": 4,
+          "timestamp": 1766951615957
+        },
+        {
+          "strength": 15,
+          "bid": 3,
+          "timestamp": 1766980275675
+        },
+        {
+          "strength": 17,
+          "bid": 3,
+          "timestamp": 1766981511146
+        },
+        {
+          "strength": 8,
+          "bid": 2,
+          "timestamp": 1766981817966
+        },
+        {
+          "strength": 12,
+          "bid": 2,
+          "timestamp": 1766982183834
+        },
+        {
+          "strength": 11,
+          "bid": 3,
+          "timestamp": 1766982518450
+        },
+        {
+          "strength": 13,
+          "bid": 2,
+          "timestamp": 1766982807987
+        },
+        {
+          "strength": 7,
+          "bid": 2,
+          "timestamp": 1766983071706
+        },
+        {
+          "strength": 8,
+          "bid": 2,
+          "timestamp": 1766983366547
+        },
+        {
+          "strength": 15,
+          "bid": 2,
+          "timestamp": 1766983667998
+        },
+        {
+          "strength": 13,
+          "bid": 2,
+          "timestamp": 1767014685831
+        },
+        {
+          "strength": 23,
+          "bid": 6,
+          "timestamp": 1767014971122
+        },
+        {
+          "strength": 14,
+          "bid": 3,
+          "timestamp": 1767015554983
+        },
+        {
+          "strength": 10,
+          "bid": 2,
+          "timestamp": 1767015996948
+        },
+        {
+          "strength": 8,
+          "bid": 2,
+          "timestamp": 1767016315992
+        },
+        {
+          "strength": 9,
+          "bid": 2,
+          "timestamp": 1767017799829
+        },
+        {
+          "strength": 11,
+          "bid": 1,
+          "timestamp": 1767018211594
+        },
+        {
+          "strength": 17,
+          "bid": 6,
+          "timestamp": 1767018938185
+        },
+        {
+          "strength": 4,
+          "bid": 1,
+          "timestamp": 1767019471610
+        },
+        {
+          "strength": 25,
+          "bid": 6,
+          "timestamp": 1767019752082
+        },
+        {
+          "strength": 17,
+          "bid": 4,
+          "timestamp": 1767021010265
+        },
+        {
+          "strength": 22,
+          "bid": 4,
+          "timestamp": 1767021326909
+        },
+        {
+          "strength": 22,
+          "bid": 4,
+          "timestamp": 1767021326911
+        },
+        {
+          "strength": 5,
+          "bid": 1,
+          "timestamp": 1767024178932
+        },
+        {
+          "strength": 17,
+          "bid": 2,
+          "timestamp": 1767024630412
+        },
+        {
+          "strength": 16,
+          "bid": 4,
+          "timestamp": 1767024938827
+        },
+        {
+          "strength": 19,
+          "bid": 3,
+          "timestamp": 1767025246946
+        },
+        {
+          "strength": 6,
+          "bid": 1,
+          "timestamp": 1767026271033
+        },
+        {
+          "strength": 16,
+          "bid": 3,
+          "timestamp": 1767027244407
+        },
+        {
+          "strength": 9,
+          "bid": 2,
+          "timestamp": 1767029240283
+        }
+      ],
+      "nilAttempts": 51,
+      "nilSuccesses": 29,
+      "conservativeNilBidder": false,
+      "leadsHigh": 0,
+      "leadsLow": 0,
+      "aggressivePlay": 260,
+      "conservativePlay": 153,
+      "helpsPartnerNil": 0,
+      "ignoresPartnerNil": 0,
+      "biddingStyle": "aggressive",
+      "playingStyle": "unknown",
+      "nilTendency": "occasional",
+      "teamPlayer": "unknown",
+      "handsObserved": 413,
+      "gamesObserved": 22,
+      "lastUpdated": 1767029240283
+    }
+  },
+  "612295416842813460": {
+    "discordId": "612295416842813460",
+    "username": "shadowdon413",
+    "stats": {
+      "classic": {
+        "gamesPlayed": 1,
+        "gamesWon": 1,
+        "handsPlayed": 10,
+        "nilBids": 0,
+        "nilSuccesses": 0,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 5,
+        "totalPoints": 510,
+        "totalTricksWon": 6,
+        "highestScore": 510
+      },
+      "cutthroat3": {
+        "gamesPlayed": 0,
+        "gamesWon": 0,
+        "handsPlayed": 0,
+        "nilBids": 0,
+        "nilSuccesses": 0,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 0,
+        "totalPoints": 0,
+        "totalTricksWon": 0,
+        "highestScore": 0
+      },
+      "cutthroat4": {
+        "gamesPlayed": 0,
+        "gamesWon": 0,
+        "handsPlayed": 0,
+        "nilBids": 0,
+        "nilSuccesses": 0,
+        "blindNilBids": 0,
+        "blindNilSuccesses": 0,
+        "totalBags": 0,
+        "totalPoints": 0,
+        "totalTricksWon": 0,
+        "highestScore": 0
+      },
+      "lastPlayed": "2025-12-26T23:38:26.675Z"
+    },
+    "opponentProfile": {
+      "totalBids": 0,
+      "bidSum": 0,
+      "bidsByHandStrength": [],
+      "nilAttempts": 0,
+      "nilSuccesses": 0,
+      "conservativeNilBidder": null,
+      "leadsHigh": 0,
+      "leadsLow": 0,
+      "aggressivePlay": 0,
+      "conservativePlay": 0,
+      "helpsPartnerNil": 0,
+      "ignoresPartnerNil": 0,
+      "biddingStyle": "unknown",
+      "playingStyle": "unknown",
+      "nilTendency": "unknown",
+      "teamPlayer": "unknown",
+      "handsObserved": 0,
+      "gamesObserved": 0,
+      "lastUpdated": null
+    }
+  }
+}

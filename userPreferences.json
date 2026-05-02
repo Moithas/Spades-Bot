@@ -1,0 +1,35 @@
+{
+  "1432868523062853652": {
+    "biddingSuggestions": true,
+    "handStrengthIndicator": false,
+    "colorBlindMode": true,
+    "recommendedCardPlay": true
+  },
+  "1368419365107535973": {
+    "biddingSuggestions": true,
+    "handStrengthIndicator": false,
+    "colorBlindMode": false,
+    "recommendedCardPlay": true
+  },
+  "956360653680037920": {
+    "biddingSuggestions": true,
+    "handStrengthIndicator": true,
+    "colorBlindMode": true,
+    "recommendedCardPlay": true,
+    "cardBackTheme": "green"
+  },
+  "1308549027855466498": {
+    "biddingSuggestions": false,
+    "handStrengthIndicator": true,
+    "colorBlindMode": true,
+    "recommendedCardPlay": false,
+    "cardBackTheme": "purple"
+  },
+  "706155855934128228": {
+    "biddingSuggestions": true,
+    "handStrengthIndicator": true,
+    "colorBlindMode": false,
+    "recommendedCardPlay": true,
+    "cardBackTheme": "christmas"
+  }
+}
