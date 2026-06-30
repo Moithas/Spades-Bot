@@ -8,6 +8,7 @@ import { Card } from './Card.js';
 import logger from '../logger.js';
 import { TIMING, GAME_LIMITS, PLAYER_LIMITS, DECK } from '../constants.js';
 import { playerStats } from '../stats/PlayerStats.js';
+import { aiLearning } from '../stats/AILearning.js';
 import { trashTalk } from './TrashTalk.js';
 
 /**
@@ -1198,14 +1199,18 @@ export default class GameManager {
         ai.aiLevel = level;
         // Configure parameters based on level
         const cfg = {
-            easy: { trials: 50, riskAversion: 0.9, aggressiveness: 0.3 },
-            medium: { trials: 200, riskAversion: 0.7, aggressiveness: 0.5 },
-            hard: { trials: 800, riskAversion: 0.4, aggressiveness: 0.8 }
+            easy: { trials: 75, riskAversion: 0.9, aggressiveness: 0.35 },
+            medium: { trials: 350, riskAversion: 0.6, aggressiveness: 0.6 },
+            hard: { trials: 1200, riskAversion: 0.38, aggressiveness: 0.82 }
         };
         const s = cfg[level] || cfg.medium;
         ai.monteCarloTrials = s.trials;
         ai.riskAversion = s.riskAversion;
         ai.aggressiveness = s.aggressiveness;
+
+        if (level === 'hard' && typeof ai.applyTuning === 'function') {
+            ai.applyTuning(aiLearning.getHardProfile());
+        }
 
         return { success: true, player: ai };
     }
@@ -2095,6 +2100,13 @@ export default class GameManager {
         
         // --- TRASH TALK: Send trash talk messages after round ---
         this.sendRoundEndTrashTalk(trashTalkEvents);
+
+        // --- HARD AI TELEMETRY: emit set-pressure summary before the next round resets state ---
+        for (const p of this.players) {
+            if (p?.isAI && typeof p.logSetPressureRoundSummary === 'function') {
+                p.logSetPressureRoundSummary();
+            }
+        }
 
         // --- SPECTATOR NOTIFICATIONS: Notify about round end ---
         if (this.spectatorView) {

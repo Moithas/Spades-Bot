@@ -22,6 +22,9 @@ export class AIPlayer extends Player {
         this.aggressiveness = 0.5; // 0..1 higher means more likely to trump/seek tricks
         this.aiLevel = 'medium';
         this.monteCarloTrials = 200; // default, can be tuned by GameManager
+        this.nilBidThreshold = 0.82;
+        this.bidAdjustment = 0;
+        this.setPressureTelemetry = this.createSetPressureTelemetry();
         
         // Opponent modeling
         this.opponentProfiles = new Map(); // Map<discordId, profile>
@@ -29,6 +32,144 @@ export class AIPlayer extends Player {
         // Trash talk settings
         this.trashTalkEnabled = true;
         this.trashTalkFrequency = 'medium';
+    }
+
+    isExpertLevel() {
+        return this.aiLevel === 'hard';
+    }
+
+    applyTuning(profile = {}) {
+        if (!profile || typeof profile !== 'object') return;
+
+        if (typeof profile.trials === 'number') {
+            this.monteCarloTrials = Math.max(50, Math.round(profile.trials));
+        }
+        if (typeof profile.monteCarloTrials === 'number') {
+            this.monteCarloTrials = Math.max(50, Math.round(profile.monteCarloTrials));
+        }
+        if (typeof profile.riskAversion === 'number') {
+            this.riskAversion = Math.max(0.05, Math.min(0.98, profile.riskAversion));
+        }
+        if (typeof profile.aggressiveness === 'number') {
+            this.aggressiveness = Math.max(0.05, Math.min(0.98, profile.aggressiveness));
+        }
+        if (typeof profile.nilBidThreshold === 'number') {
+            this.nilBidThreshold = Math.max(0.4, Math.min(0.98, profile.nilBidThreshold));
+        }
+        if (typeof profile.bidAdjustment === 'number') {
+            this.bidAdjustment = Math.max(-1.5, Math.min(1.5, profile.bidAdjustment));
+        }
+    }
+
+    getTuningSnapshot() {
+        return {
+            monteCarloTrials: this.monteCarloTrials,
+            riskAversion: this.riskAversion,
+            aggressiveness: this.aggressiveness,
+            nilBidThreshold: this.nilBidThreshold,
+            bidAdjustment: this.bidAdjustment
+        };
+    }
+
+    getTeamScore(game, teamId) {
+        if (game.isCutthroat()) return 0;
+        const teamPlayers = game.players.filter(p => p.team === teamId);
+        return teamPlayers.length > 0 ? (teamPlayers[0].score || 0) : 0;
+    }
+
+    getTeamBidAndTricks(game, teamId) {
+        const teamPlayers = game.players.filter(p => p.team === teamId);
+        const bid = teamPlayers.reduce((sum, p) => sum + (p.isNil ? 0 : (p.bid || 0)), 0);
+        const tricks = teamPlayers.reduce((sum, p) => sum + (p.tricks || 0), 0);
+        const bags = teamPlayers.length > 0 ? (teamPlayers[0].bags || 0) : 0;
+        return { bid, tricks, bags };
+    }
+
+    getOpponentContractPressure(game) {
+        if (game.isCutthroat()) {
+            return { forceSetAttempt: false, forceBagTrap: false };
+        }
+
+        const hasHumanOpponents = game.players.some(p => !p.isAI && p.team !== this.team);
+        if (!hasHumanOpponents) {
+            return { forceSetAttempt: false, forceBagTrap: false };
+        }
+
+        const myTeam = this.team;
+        const opponentTeam = myTeam === 1 ? 2 : 1;
+        const myState = this.getTeamBidAndTricks(game, myTeam);
+        const oppState = this.getTeamBidAndTricks(game, opponentTeam);
+
+        const cardsRemaining = this.hand.length;
+        const tricksLeft = Math.max(0, cardsRemaining);
+        const oppNeed = Math.max(0, oppState.bid - oppState.tricks);
+        const oppNeedRate = tricksLeft > 0 ? (oppNeed / tricksLeft) : 0;
+
+        // Anti-human set pressure:
+        // - Opponents need a large share of remaining tricks, OR
+        // - Late-hand window where even one denied trick can set them.
+        const forceSetAttempt =
+            oppNeed >= Math.max(2, Math.ceil(tricksLeft * 0.5)) ||
+            (oppNeed >= 1 && tricksLeft <= 3) ||
+            oppNeedRate >= 0.5;
+
+        // Anti-human bag trap: if opponents are near bag penalty and already made contract, force awkward tricks.
+        const oppMadeBid = oppState.tricks >= oppState.bid;
+        const forceBagTrap = oppMadeBid && oppState.bags >= 8;
+
+        // If our own team is in danger of being set, never prioritize trap lines.
+        const ourNeed = Math.max(0, myState.bid - myState.tricks);
+        if (ourNeed > 0) {
+            return { forceSetAttempt, forceBagTrap: false };
+        }
+
+        return { forceSetAttempt, forceBagTrap };
+    }
+
+    getTargetScore(game) {
+        const configured = Number(game?.options?.targetScore || game?.targetScore || 500);
+        if (!Number.isFinite(configured)) return 500;
+        return Math.max(100, configured);
+    }
+
+    createSetPressureTelemetry() {
+        return {
+            opportunities: 0,
+            leadPressurePlays: 0,
+            followPressureCaptures: 0
+        };
+    }
+
+    recordSetPressureOpportunity() {
+        if (!this.isExpertLevel()) return;
+        this.setPressureTelemetry.opportunities += 1;
+    }
+
+    recordSetPressureLeadPlay() {
+        if (!this.isExpertLevel()) return;
+        this.setPressureTelemetry.leadPressurePlays += 1;
+    }
+
+    recordSetPressureFollowCapture() {
+        if (!this.isExpertLevel()) return;
+        this.setPressureTelemetry.followPressureCaptures += 1;
+    }
+
+    logSetPressureRoundSummary() {
+        if (!this.isExpertLevel()) return;
+
+        const stats = this.setPressureTelemetry;
+        if (!stats) return;
+
+        if (stats.opportunities > 0 || stats.leadPressurePlays > 0 || stats.followPressureCaptures > 0) {
+            logger.info(
+                `📊 Hard set-pressure ${this.username}: opportunities=${stats.opportunities}, ` +
+                `leadPlays=${stats.leadPressurePlays}, followCaptures=${stats.followPressureCaptures}, ` +
+                `bid=${this.bid ?? 0}, tricks=${this.tricks ?? 0}`
+            );
+        }
+
+        this.setPressureTelemetry = this.createSetPressureTelemetry();
     }
 
     /**
@@ -166,7 +307,41 @@ export class AIPlayer extends Player {
                 bid += 0.2;
                 logger.debug(`🧠 AI adjusting bid UP (facing conservative opponents)`);
             }
+
+            // Expert adaptation: exploit known aggressive humans by tightening expected winners.
+            if (this.isExpertLevel()) {
+                const aggressiveHumans = opponents.filter(opp => {
+                    if (opp.isAI) return false;
+                    const profile = this.getOpponentProfile(opp.discordId);
+                    return profile.reliable && (profile.biddingStyle === 'aggressive' || profile.playingStyle === 'aggressive');
+                }).length;
+                if (aggressiveHumans > 0) {
+                    bid -= 0.15 * aggressiveHumans;
+                }
+            }
         }
+
+        // Expert score-state adaptation to avoid easy sets and push comebacks.
+        if (this.isExpertLevel() && !game.isCutthroat()) {
+            const myTeamScore = this.getTeamScore(game, this.team);
+            const oppTeamScore = this.getTeamScore(game, this.team === 1 ? 2 : 1);
+            const scoreDelta = myTeamScore - oppTeamScore;
+
+            if (scoreDelta <= -120) {
+                bid += 0.35;
+            } else if (scoreDelta >= 120) {
+                bid -= 0.25;
+            }
+
+            // Hard-only closeout discipline: near victory, avoid greed that can induce bags/sets.
+            const targetScore = this.getTargetScore(game);
+            const weNearWin = myTeamScore >= (targetScore - 120);
+            if (weNearWin && scoreDelta >= 0) {
+                bid -= 0.2;
+            }
+        }
+
+        bid += this.bidAdjustment;
 
         // Round to nearest integer
         bid = Math.round(bid);
@@ -241,9 +416,17 @@ export class AIPlayer extends Player {
             }
         }
         
-        if (nilChance > 0 && Math.random() < nilChance) {
-            logger.debug(`🧠 AI bidding Nil (chance was: ${(nilChance * 100).toFixed(0)}%)`);
-            return 0; // Nil bid
+        if (nilChance > 0) {
+            if (this.aiLevel === 'hard') {
+                // Hard AI avoids coin-flip Nil bids and only commits when the hand is clearly safe.
+                if (nilChance >= this.nilBidThreshold) {
+                    logger.debug(`🧠 AI (hard) bidding Nil with high confidence (${(nilChance * 100).toFixed(0)}%)`);
+                    return 0;
+                }
+            } else if (Math.random() < nilChance) {
+                logger.debug(`🧠 AI bidding Nil (chance was: ${(nilChance * 100).toFixed(0)}%)`);
+                return 0; // Nil bid
+            }
         }
 
         logger.debug(`🧠 AI final bid: ${bid}`);
@@ -327,8 +510,8 @@ export class AIPlayer extends Player {
      * Select a card to lead with
      */
     selectLeadCard(game, legalCards, partnerIsNil, opponentOnNil) {
-        const needsTricks = this.tricks < this.bid;
-        const hasExtraTricks = this.tricks > this.bid;
+        const { needsTricks, hasExtraTricks } = this.evaluateTrickPosture(game);
+        const isExpert = this.isExpertLevel();
 
         // CRITICAL: Filter out Kings where Ace is still outstanding (universal rule)
         // Only lead a King if we also have the Ace or the Ace has been played
@@ -413,6 +596,30 @@ export class AIPlayer extends Player {
             return this.getLowestCard(cardsToConsider);
         }
 
+        // Expert anti-human heuristics:
+        // 1) Force-set pressure when opponents are desperate for tricks.
+        // 2) Bag trap when opponents are near a bag penalty.
+        if (isExpert) {
+            const pressure = this.getOpponentContractPressure(game);
+            if (pressure.forceSetAttempt) {
+                this.recordSetPressureOpportunity();
+            }
+            if (pressure.forceSetAttempt && (!hasExtraTricks || this.hand.length <= 3)) {
+                const cashable = cardsToConsider.filter(c => !this.hasUnseenHigherInSuitThan(c));
+                if (cashable.length > 0) {
+                    this.recordSetPressureLeadPlay();
+                    return this.getHighestCard(cashable);
+                }
+            }
+
+            if (pressure.forceBagTrap && !needsTricks) {
+                const lowNonSpades = cardsToConsider.filter(c => c.suitCode !== 'S' && c.value <= 8);
+                if (lowNonSpades.length > 0) {
+                    return this.getHighestCard(lowNonSpades);
+                }
+            }
+        }
+
         // If we need tricks, lead with suits where we are strongest
         if (needsTricks) {
             // Lead with Aces first (most likely to win)
@@ -440,6 +647,10 @@ export class AIPlayer extends Player {
                 // Lead with highest SAFE card in that suit (not one that's likely to be beaten)
                 const safeCards = suitCards.filter(c => !this.hasUnseenHigherInSuitThan(c));
                 if (safeCards.length > 0) {
+                    if (isExpert && safeCards.length > 1) {
+                        const simPick = this.selectBySimulation(game, safeCards, 'win');
+                        if (simPick) return simPick;
+                    }
                     return this.getHighestCard(safeCards);
                 }
                 // Otherwise lead highest in suit
@@ -473,18 +684,33 @@ export class AIPlayer extends Player {
         const currentWinningPlayer = currentWinningEntry ? currentWinningEntry.player : null;
         const canWin = currentWinningCard ? legalCards.some(c => this.cardBeats(c, currentWinningCard, game)) : false;
 
-        const needsTricks = this.tricks < this.bid;
-        const hasExtraTricks = this.tricks > this.bid;
+        const { needsTricks, hasExtraTricks } = this.evaluateTrickPosture(game);
+        const isExpert = this.isExpertLevel();
 
         // Check if partner is currently winning
         const partner = this.getPartner(game);
         const partnerIsWinning = currentWinningPlayer && partner && currentWinningPlayer.id === partner.id;
 
+        if (isExpert && !game.isCutthroat()) {
+            const pressure = this.getOpponentContractPressure(game);
+            const opponentCurrentlyWinning = currentWinningPlayer && currentWinningPlayer.team !== this.team;
+            if (pressure.forceSetAttempt) {
+                this.recordSetPressureOpportunity();
+            }
+
+            // Hard-only defensive set pressure: win this trick when opponents are under pressure.
+            if (pressure.forceSetAttempt && opponentCurrentlyWinning && canWin) {
+                const forcedWinner = this.getLowestWinningCard(legalCards, currentWinningCard, game);
+                if (forcedWinner) {
+                    this.recordSetPressureFollowCapture();
+                    return forcedWinner;
+                }
+            }
+        }
+
         // AGGRESSIVE: If opponent is on Nil, try to force them to take the trick
-        if (opponentOnNil && game.currentTrick && game.currentTrick.playedBy) {
-            // Check if the opponent on Nil has already played
-            const nilPlayerIndex = game.players.findIndex(p => p.team !== this.team && p.isNil && p.tricks === 0);
-            const nilPlayerHasPlayed = game.currentTrick.playedBy.includes(nilPlayerIndex);
+        if (opponentOnNil && game.trick && game.trick.length > 0) {
+            const nilPlayerHasPlayed = game.trick.some(entry => entry.player.id === opponentOnNil.id);
 
             if (!nilPlayerHasPlayed) {
                 // Opponent Nil player hasn't played yet - try to WIN this trick to force them
@@ -498,8 +724,8 @@ export class AIPlayer extends Player {
                 }
                 
                 // Can't win outright, but play a high card to pressure the Nil player
-                const ledSuit = game.currentTrick.cards[0].suit;
-                const followSuitCards = legalCards.filter(c => c.suit === ledSuit);
+                const ledSuit = game.trick[0].card.suitCode;
+                const followSuitCards = legalCards.filter(c => c.suitCode === ledSuit);
                 if (followSuitCards.length > 0) {
                     const highCards = followSuitCards.filter(c => c.value >= 9);
                     if (highCards.length > 0) {
@@ -509,8 +735,8 @@ export class AIPlayer extends Player {
                 }
                 
                 // Can't follow suit - consider trumping
-                const trumpCards = legalCards.filter(c => c.suit === 'spades');
-                if (trumpCards.length > 0 && ledSuit !== 'spades') {
+                const trumpCards = legalCards.filter(c => c.suitCode === 'S');
+                if (trumpCards.length > 0 && ledSuit !== 'S') {
                     logger.debug(`🎯 AI ${this.username}: Trumping to force opponent Nil`);
                     return this.getLowestCard(trumpCards);
                 }
@@ -521,16 +747,7 @@ export class AIPlayer extends Player {
                 if (canWin) {
                     const winningCard = this.getLowestWinningCard(legalCards, currentWinningCard, game);
                     if (winningCard) {
-                        // Check if this would make the Nil player win
-                        const nilPlayer = game.players[nilPlayerIndex];
-                        const nilPlayerCardIndex = game.currentTrick.playedBy.indexOf(nilPlayerIndex);
-                        const nilPlayerCard = game.currentTrick.cards[nilPlayerCardIndex];
-                        
-                        // Only win if it doesn't give the trick to the Nil player
-                        const wouldNilPlayerWin = this.cardBeats(nilPlayerCard, winningCard, game);
-                        if (!wouldNilPlayerWin) {
-                            return winningCard;
-                        }
+                        return winningCard;
                     }
                 }
             }
@@ -547,7 +764,23 @@ export class AIPlayer extends Player {
         // Partner is NOT winning - consider taking the trick if we need tricks
         if (needsTricks) {
             if (canWin) {
+                if (isExpert) {
+                    const winners = legalCards.filter(c => this.cardBeats(c, currentWinningCard, game));
+                    if (winners.length > 0 && winners.length <= 3) {
+                        const simWinner = this.selectBySimulation(game, winners, 'win');
+                        if (simWinner) return simWinner;
+                    }
+                }
+
                 const candidate = this.getLowestWinningCard(legalCards, currentWinningCard, game);
+
+                if (isExpert) {
+                    const winners = legalCards.filter(c => this.cardBeats(c, currentWinningCard, game));
+                    if (winners.length > 0 && this.aggressiveness >= 0.76) {
+                        return this.getHighestCard(winners);
+                    }
+                }
+
                 // Use Monte Carlo to evaluate candidate if it's risky or marginal
                 const trials = this.aiLevel === 'hard' ? Math.max(200, this.monteCarloTrials) : this.aiLevel === 'easy' ? 50 : this.monteCarloTrials;
                 try {
@@ -614,6 +847,51 @@ export class AIPlayer extends Player {
     }
 
     /**
+     * Team-aware posture for deciding whether to push for tricks or avoid bags.
+     * In classic mode, stronger AI prioritizes the team contract over individual trick count.
+     */
+    evaluateTrickPosture(game) {
+        const ownBidTarget = this.isNil ? 0 : (this.bid || 0);
+        const ownNeeds = this.tricks < ownBidTarget;
+        const ownExtra = this.tricks > ownBidTarget;
+
+        if (game.isCutthroat()) {
+            return { needsTricks: ownNeeds, hasExtraTricks: ownExtra };
+        }
+
+        const partner = this.getPartner(game);
+        if (!partner) {
+            return { needsTricks: ownNeeds, hasExtraTricks: ownExtra };
+        }
+
+        const partnerBidTarget = partner.isNil ? 0 : (partner.bid || 0);
+        const teamBidTarget = ownBidTarget + partnerBidTarget;
+        const teamTricks = this.tricks + partner.tricks;
+        const teamNeeds = teamTricks < teamBidTarget;
+        const teamExtra = teamTricks > teamBidTarget;
+
+        // At 8+ bags, overtricks are usually expensive. Stronger AI protects against this.
+        const teamBags = (this.bags || 0) + (partner.bags || 0);
+        const bagDanger = teamBags >= 8 && teamExtra;
+
+        if (this.aiLevel === 'hard') {
+            return {
+                needsTricks: teamNeeds || ownNeeds,
+                hasExtraTricks: bagDanger && !teamNeeds
+            };
+        }
+
+        if (this.aiLevel === 'medium') {
+            return {
+                needsTricks: teamNeeds || ownNeeds,
+                hasExtraTricks: bagDanger || (teamExtra && !ownNeeds)
+            };
+        }
+
+        return { needsTricks: ownNeeds, hasExtraTricks: ownExtra };
+    }
+
+    /**
      * Determine the current winning entry (player + card) in the trick so far.
      * @param {object} game
      * @returns {{player: object, card: object} | null}
@@ -666,6 +944,46 @@ export class AIPlayer extends Player {
         const winningCards = cards.filter(c => this.cardBeats(c, cardToBeat, game));
         if (winningCards.length === 0) return this.getLowestCard(cards);
         return this.getLowestCard(winningCards);
+    }
+
+    /**
+     * Choose the best card from candidates using Monte Carlo simulation.
+     * objective='win' maximizes trick-win probability.
+     * objective='lose' minimizes trick-win probability to avoid bags / protect partner.
+     */
+    selectBySimulation(game, candidates, objective = 'win') {
+        if (!Array.isArray(candidates) || candidates.length === 0) return null;
+
+        const budgetPerCard = Math.max(
+            90,
+            Math.floor((this.monteCarloTrials || 200) / Math.max(1.5, candidates.length / 1.5))
+        );
+
+        let bestCard = candidates[0];
+        let bestScore = objective === 'win' ? -1 : 2;
+
+        for (const c of candidates) {
+            let winProb = 0;
+            try {
+                winProb = this.monteCarloWinProbability(c, game, budgetPerCard);
+            } catch (e) {
+                continue;
+            }
+
+            if (objective === 'win') {
+                if (winProb > bestScore) {
+                    bestScore = winProb;
+                    bestCard = c;
+                }
+            } else {
+                if (winProb < bestScore) {
+                    bestScore = winProb;
+                    bestCard = c;
+                }
+            }
+        }
+
+        return bestCard;
     }
 
     /** Monte Carlo estimate: probability this AI wins the current trick if it plays `candidate` now. */
@@ -978,6 +1296,7 @@ export class AIPlayer extends Player {
     resetForNewRound() {
         super.resetForNewRound();
         this.playedCards = [];
+        this.setPressureTelemetry = this.createSetPressureTelemetry();
     }
 }
 
