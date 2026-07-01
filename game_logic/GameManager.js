@@ -9,6 +9,7 @@ import logger from '../logger.js';
 import { TIMING, GAME_LIMITS, PLAYER_LIMITS, DECK } from '../constants.js';
 import { playerStats } from '../stats/PlayerStats.js';
 import { aiLearning } from '../stats/AILearning.js';
+import { aiHardTelemetryStore } from '../stats/AIHardTelemetry.js';
 import { trashTalk } from './TrashTalk.js';
 
 /**
@@ -86,6 +87,9 @@ export default class GameManager {
             this._aiScheduledTimeout = null;
             // Per-game lock to prevent concurrent AI plays (reentrancy)
             this._aiPlaying = false;
+            // Hard telemetry context for persistent tracking across live games.
+            this.telemetryGameId = `${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+            this.hardSetPressureGameTotals = {};
         }
 
     /**
@@ -2101,10 +2105,40 @@ export default class GameManager {
         // --- TRASH TALK: Send trash talk messages after round ---
         this.sendRoundEndTrashTalk(trashTalkEvents);
 
-        // --- HARD AI TELEMETRY: emit set-pressure summary before the next round resets state ---
+        // --- HARD AI TELEMETRY: emit and persist set-pressure summary before next-round reset ---
         for (const p of this.players) {
-            if (p?.isAI && typeof p.logSetPressureRoundSummary === 'function') {
-                p.logSetPressureRoundSummary();
+            if (p?.isAI && typeof p.consumeSetPressureRoundSummary === 'function') {
+                const stats = p.consumeSetPressureRoundSummary();
+                if (!stats) continue;
+
+                const key = p.discordId || p.id || p.username;
+                if (!this.hardSetPressureGameTotals[key]) {
+                    this.hardSetPressureGameTotals[key] = {
+                        username: p.username,
+                        team: p.team,
+                        rounds: 0,
+                        opportunities: 0,
+                        leadPressurePlays: 0,
+                        followPressureCaptures: 0
+                    };
+                }
+
+                const total = this.hardSetPressureGameTotals[key];
+                total.rounds += 1;
+                total.opportunities += stats.opportunities;
+                total.leadPressurePlays += stats.leadPressurePlays;
+                total.followPressureCaptures += stats.followPressureCaptures;
+
+                aiHardTelemetryStore.recordRound({
+                    gameId: this.telemetryGameId,
+                    round: this.currentRound,
+                    gameMode: this.gameMode,
+                    targetScore: this.options?.targetScore,
+                    aiPlayerId: key,
+                    aiUsername: p.username,
+                    aiTeam: p.team,
+                    stats
+                });
             }
         }
 
@@ -2574,6 +2608,36 @@ export default class GameManager {
             clearTimeout(this._aiScheduledTimeout);
             this._aiScheduledTimeout = null;
             logger.debug('🧹 Cleared AI scheduled timeout on game end');
+        }
+
+        // Persist game-level hard telemetry aggregate so later analysis can include missed live games.
+        try {
+            const totalsArray = Object.values(this.hardSetPressureGameTotals || {});
+            const hasTotals = totalsArray.some(t =>
+                (t.opportunities || 0) > 0 ||
+                (t.leadPressurePlays || 0) > 0 ||
+                (t.followPressureCaptures || 0) > 0
+            );
+
+            if (hasTotals) {
+                aiHardTelemetryStore.recordGame({
+                    gameId: this.telemetryGameId,
+                    gameMode: this.gameMode,
+                    targetScore: this.options?.targetScore,
+                    roundsPlayed: Math.max(0, this.currentRound - 1),
+                    players: this.players.map(p => ({
+                        id: p.discordId || p.id,
+                        username: p.username,
+                        isAI: !!p.isAI,
+                        team: p.team,
+                        score: p.score,
+                        bags: p.bags
+                    })),
+                    hardTotals: totalsArray
+                });
+            }
+        } catch (e) {
+            logger.error('Failed to persist hard telemetry game aggregate:', e);
         }
         
         let winningTeam = 0;

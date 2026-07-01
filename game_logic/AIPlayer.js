@@ -155,21 +155,30 @@ export class AIPlayer extends Player {
         this.setPressureTelemetry.followPressureCaptures += 1;
     }
 
-    logSetPressureRoundSummary() {
-        if (!this.isExpertLevel()) return;
+    consumeSetPressureRoundSummary() {
+        if (!this.isExpertLevel()) return null;
 
         const stats = this.setPressureTelemetry;
-        if (!stats) return;
+        if (!stats) return null;
 
-        if (stats.opportunities > 0 || stats.leadPressurePlays > 0 || stats.followPressureCaptures > 0) {
+        const summary = {
+            opportunities: stats.opportunities || 0,
+            leadPressurePlays: stats.leadPressurePlays || 0,
+            followPressureCaptures: stats.followPressureCaptures || 0,
+            bid: this.bid ?? 0,
+            tricks: this.tricks ?? 0
+        };
+
+        if (summary.opportunities > 0 || summary.leadPressurePlays > 0 || summary.followPressureCaptures > 0) {
             logger.info(
-                `📊 Hard set-pressure ${this.username}: opportunities=${stats.opportunities}, ` +
-                `leadPlays=${stats.leadPressurePlays}, followCaptures=${stats.followPressureCaptures}, ` +
-                `bid=${this.bid ?? 0}, tricks=${this.tricks ?? 0}`
+                `📊 Hard set-pressure ${this.username}: opportunities=${summary.opportunities}, ` +
+                `leadPlays=${summary.leadPressurePlays}, followCaptures=${summary.followPressureCaptures}, ` +
+                `bid=${summary.bid}, tricks=${summary.tricks}`
             );
         }
 
         this.setPressureTelemetry = this.createSetPressureTelemetry();
+        return summary;
     }
 
     /**

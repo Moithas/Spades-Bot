@@ -5,7 +5,12 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "benchmark:ai": "node scripts/benchmark_ai_20_games.js",
+    "benchmark:ai:pool": "node scripts/benchmark_ai_pool.js",
+    "ai:selfplay": "node scripts/collect_hard_selfplay_samples.js",
+    "ai:train": "node scripts/train_hard_ai.js",
+    "telemetry:hard": "node scripts/view_hard_telemetry.js"
   },
   "keywords": [],
   "author": "",
