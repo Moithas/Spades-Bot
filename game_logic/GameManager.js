@@ -2129,14 +2129,59 @@ export default class GameManager {
                 total.leadPressurePlays += stats.leadPressurePlays;
                 total.followPressureCaptures += stats.followPressureCaptures;
 
+                const seatIndex = this.players.findIndex(player => player === p);
+                const seat = seatIndex >= 0 ? seatIndex + 1 : null;
+                const bidGap = (stats.tricks || 0) - (stats.bid || 0);
+                const bidGapBucket =
+                    bidGap <= -3 ? '<=-3' :
+                    bidGap === -2 ? '-2' :
+                    bidGap === -1 ? '-1' :
+                    bidGap === 0 ? '0' :
+                    bidGap === 1 ? '+1' :
+                    bidGap === 2 ? '+2' : '>=+3';
+
+                let aiTeamScore = null;
+                let opponentTeamScore = null;
+                let scoreDiff = null;
+                let scoreState = 'unknown';
+
+                if (!this.isCutthroat() && (p.team === 1 || p.team === 2)) {
+                    const aiTeamPlayers = this.players.filter(player => player.team === p.team);
+                    const opponentTeam = p.team === 1 ? 2 : 1;
+                    const opponentPlayers = this.players.filter(player => player.team === opponentTeam);
+
+                    aiTeamScore = aiTeamPlayers.length > 0 ? (aiTeamPlayers[0].score || 0) : 0;
+                    opponentTeamScore = opponentPlayers.length > 0 ? (opponentPlayers[0].score || 0) : 0;
+                    scoreDiff = aiTeamScore - opponentTeamScore;
+
+                    if (scoreDiff >= 100) {
+                        scoreState = 'leading_big';
+                    } else if (scoreDiff >= 25) {
+                        scoreState = 'leading';
+                    } else if (scoreDiff > -25) {
+                        scoreState = 'even';
+                    } else if (scoreDiff > -100) {
+                        scoreState = 'trailing';
+                    } else {
+                        scoreState = 'trailing_big';
+                    }
+                }
+
                 aiHardTelemetryStore.recordRound({
                     gameId: this.telemetryGameId,
                     round: this.currentRound,
                     gameMode: this.gameMode,
                     targetScore: this.options?.targetScore,
+                    seat,
                     aiPlayerId: key,
                     aiUsername: p.username,
                     aiTeam: p.team,
+                    aiTeamScore,
+                    opponentTeamScore,
+                    scoreDiff,
+                    scoreState,
+                    bidGap,
+                    bidGapBucket,
                     stats
                 });
             }
