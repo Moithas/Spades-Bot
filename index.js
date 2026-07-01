@@ -3897,12 +3897,22 @@ client.on('interactionCreate', async interaction => {
                     fetchReply: true 
                 });
 
-                // Create a thread from the message
-                const thread = await threadStartMessage.startThread({
-                    name: `Spades Game (Started by ${interaction.user.username})`,
-                    autoArchiveDuration: 10080, // Archive after 7 days of inactivity
-                    reason: 'New Spades game starting'
-                });
+                // Create a thread from the message; if unsupported, run in current channel.
+                let thread = interaction.channel;
+                try {
+                    thread = await threadStartMessage.startThread({
+                        name: `Spades Game (Started by ${interaction.user.username})`,
+                        autoArchiveDuration: 10080, // Archive after 7 days of inactivity
+                        reason: 'New Spades game starting'
+                    });
+                } catch (threadError) {
+                    logger.error('❌ Thread creation unavailable, continuing in current channel:', threadError);
+                    try {
+                        await interaction.editReply('🎮 Thread creation is unavailable here. Starting Spades in this channel instead.');
+                    } catch (editErr) {
+                        logger.error('❌ Failed to edit start reply after thread fallback:', editErr);
+                    }
+                }
 
                 // The user initiating the command is the first player
                 const initiator = {
