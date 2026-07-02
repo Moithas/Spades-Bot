@@ -11,7 +11,8 @@
     "ai:selfplay": "node scripts/collect_hard_selfplay_samples.js",
     "ai:train": "node scripts/train_hard_ai.js",
     "telemetry:hard": "node scripts/view_hard_telemetry.js",
-    "telemetry:hard:analyze": "node scripts/analyze_hard_telemetry.js"
+    "telemetry:hard:analyze": "node scripts/analyze_hard_telemetry.js",
+    "telemetry:game": "node scripts/analyze_game_telemetry.js"
   },
   "keywords": [],
   "author": "",

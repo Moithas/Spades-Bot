@@ -10,6 +10,7 @@ import { TIMING, GAME_LIMITS, PLAYER_LIMITS, DECK } from '../constants.js';
 import { playerStats } from '../stats/PlayerStats.js';
 import { aiLearning } from '../stats/AILearning.js';
 import { aiHardTelemetryStore } from '../stats/AIHardTelemetry.js';
+import { gameTelemetryStore } from '../stats/GameTelemetry.js';
 import { trashTalk } from './TrashTalk.js';
 
 /**
@@ -2187,6 +2188,40 @@ export default class GameManager {
             }
         }
 
+        // --- GENERAL TELEMETRY: persist round-level bid/trick snapshots for all games ---
+        try {
+            const roundPlayerSnapshots = this.players.map((p, index) => ({
+                seat: index + 1,
+                discordId: p.discordId || p.id || null,
+                username: p.username,
+                isAI: !!p.isAI,
+                aiLevel: p.isAI ? (p.aiLevel || 'medium') : 'human',
+                team: p.team,
+                bid: p.bid ?? 0,
+                tricks: p.tricks ?? 0,
+                score: p.score ?? 0,
+                bags: p.bags ?? 0,
+                bidGap: (p.tricks ?? 0) - (p.bid ?? 0),
+                nilBid: !!p.isNil,
+                blindNilBid: !!p.isBlindNil
+            }));
+
+            gameTelemetryStore.recordRound({
+                gameId: this.telemetryGameId,
+                guildId: this.guildId || null,
+                channelId: this.channelId || null,
+                round: this.currentRound,
+                gameMode: this.gameMode,
+                targetScore: this.options?.targetScore,
+                humanPlayerCount: this.players.filter(p => !p.isAI).length,
+                aiPlayerCount: this.players.filter(p => p.isAI).length,
+                humanOnlyGame: this.players.every(p => !p.isAI),
+                players: roundPlayerSnapshots
+            });
+        } catch (error) {
+            logger.error('Failed to persist general round telemetry:', error);
+        }
+
         // --- SPECTATOR NOTIFICATIONS: Notify about round end ---
         if (this.spectatorView) {
             let roundNotif = `**Hand ${this.currentRound} Complete!**\n`;
@@ -2683,6 +2718,36 @@ export default class GameManager {
             }
         } catch (e) {
             logger.error('Failed to persist hard telemetry game aggregate:', e);
+        }
+
+        // Persist a general game summary for all games, including human-vs-AI sessions.
+        try {
+            const finalPlayers = this.players.map((p, index) => ({
+                seat: index + 1,
+                discordId: p.discordId || p.id || null,
+                username: p.username,
+                isAI: !!p.isAI,
+                aiLevel: p.isAI ? (p.aiLevel || 'medium') : 'human',
+                team: p.team,
+                finalScore: p.score ?? 0,
+                bags: p.bags ?? 0,
+                handsWon: p.tricks ?? 0
+            }));
+
+            gameTelemetryStore.recordGame({
+                gameId: this.telemetryGameId,
+                guildId: this.guildId || null,
+                channelId: this.channelId || null,
+                gameMode: this.gameMode,
+                targetScore: this.options?.targetScore,
+                roundsPlayed: Math.max(0, this.currentRound - 1),
+                humanPlayerCount: this.players.filter(p => !p.isAI).length,
+                aiPlayerCount: this.players.filter(p => p.isAI).length,
+                humanOnlyGame: this.players.every(p => !p.isAI),
+                players: finalPlayers
+            });
+        } catch (error) {
+            logger.error('Failed to persist general game telemetry:', error);
         }
         
         let winningTeam = 0;

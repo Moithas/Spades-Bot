@@ -1764,6 +1764,8 @@ client.on('interactionCreate', async interaction => {
             
             // Create the game with the selected mode
             const newGame = new GameManager(publicAnnounce, privatePrompt, 500, selectedMode);
+            newGame.guildId = interaction.guildId;
+            newGame.guildId = interaction.guildId;
             newGame.channelId = threadId;
             newGame.channel = gameChannel; // Store channel for AI trash talk
             newGame.state = 'LOBBY';
