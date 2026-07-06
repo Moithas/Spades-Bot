@@ -1215,6 +1215,9 @@ export default class GameManager {
 
         if (level === 'hard' && typeof ai.applyTuning === 'function') {
             ai.applyTuning(aiLearning.getHardProfile());
+
+            // Guardrail: avoid chronically conservative hard bidding from learned profiles.
+            ai.bidAdjustment = Math.max(ai.bidAdjustment || 0, 0.15);
         }
 
         return { success: true, player: ai };
