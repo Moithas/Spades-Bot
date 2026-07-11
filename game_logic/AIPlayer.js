@@ -263,6 +263,7 @@ export class AIPlayer extends Player {
      */
     calculateBid(game) {
         let bid = 0;
+        const isExpert = this.isExpertLevel();
 
         // Count high cards (likely winners)
         const aces = this.hand.filter(c => c.rankCode === 'A').length;
@@ -331,7 +332,7 @@ export class AIPlayer extends Player {
         }
 
         // Expert score-state adaptation to avoid easy sets and push comebacks.
-        if (this.isExpertLevel() && !game.isCutthroat()) {
+        if (isExpert && !game.isCutthroat()) {
             const myTeamScore = this.getTeamScore(game, this.team);
             const oppTeamScore = this.getTeamScore(game, this.team === 1 ? 2 : 1);
             const scoreDelta = myTeamScore - oppTeamScore;
@@ -347,6 +348,24 @@ export class AIPlayer extends Player {
             const weNearWin = myTeamScore >= (targetScore - 120);
             if (weNearWin && scoreDelta >= 0) {
                 bid -= 0.2;
+            }
+        }
+
+        if (isExpert) {
+            const aceKingCombos = ['S', 'H', 'D', 'C'].filter(suitCode => {
+                const hasAce = this.hand.some(c => c.suitCode === suitCode && c.rankCode === 'A');
+                const hasKing = this.hand.some(c => c.suitCode === suitCode && c.rankCode === 'K');
+                return hasAce && hasKing;
+            }).length;
+
+            const conservativeFloor = Math.min(
+                13,
+                aces + Math.floor(aceKingCombos * 0.75) + (highSpades >= 2 ? 1 : 0)
+            );
+
+            // Keep hard from extreme underbids without forcing broad overbids.
+            if (bid + 0.35 < conservativeFloor) {
+                bid = conservativeFloor - 0.35;
             }
         }
 
@@ -952,7 +971,38 @@ export class AIPlayer extends Player {
     getLowestWinningCard(cards, cardToBeat, game) {
         const winningCards = cards.filter(c => this.cardBeats(c, cardToBeat, game));
         if (winningCards.length === 0) return this.getLowestCard(cards);
+
+        const saferWinningCards = winningCards.filter(c => !this.isVulnerableKingWinner(c, game));
+        if (saferWinningCards.length > 0) {
+            return this.getLowestCard(saferWinningCards);
+        }
+
         return this.getLowestCard(winningCards);
+    }
+
+    playersRemainingAfterThisPlay(game) {
+        const playersCount = Array.isArray(game?.players) ? game.players.length : 4;
+        const playedThisTrick = Array.isArray(game?.trick) ? game.trick.length : 0;
+        return Math.max(0, playersCount - (playedThisTrick + 1));
+    }
+
+    isAceOutstandingInSuit(suitCode) {
+        if (!suitCode) return false;
+
+        const haveAce = this.hand.some(c => c.suitCode === suitCode && c.rankCode === 'A');
+        if (haveAce) return false;
+
+        const acePlayed = this.playedCards.some(pc => pc.suitCode === suitCode && pc.rankCode === 'A');
+        return !acePlayed;
+    }
+
+    isVulnerableKingWinner(card, game) {
+        if (!card || card.rankCode !== 'K') return false;
+
+        const playersRemaining = this.playersRemainingAfterThisPlay(game);
+        if (playersRemaining <= 0) return false;
+
+        return this.isAceOutstandingInSuit(card.suitCode);
     }
 
     /**
