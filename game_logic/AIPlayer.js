@@ -478,6 +478,13 @@ export class AIPlayer extends Player {
             return legalCards[0]; // Only one choice
         }
 
+        // If THIS player is on an active Nil (hasn't taken a trick yet), play to AVOID
+        // winning. This overrides team-need posture, which would otherwise push the Nil
+        // bidder to win tricks for the team and break its own Nil.
+        if (this.isNil && this.tricks === 0) {
+            return this.selectNilCard(game, legalCards);
+        }
+
         // Get game context
         const isLeading = game.trick.length === 0;
         const partner = this.getPartner(game);
@@ -505,6 +512,41 @@ export class AIPlayer extends Player {
 
         // Strategy: Following in the trick
         return this.selectFollowCard(game, legalCards, partnerIsNil, opponentOnNil);
+    }
+
+    /**
+     * Card selection while THIS player is on an active Nil bid (no tricks taken yet).
+     * Goal: avoid winning any trick. Duck as high as safely possible to shed dangerous
+     * high cards; only win when every legal card is forced to win.
+     */
+    selectNilCard(game, legalCards) {
+        const isLeading = !game.trick || game.trick.length === 0;
+
+        if (isLeading) {
+            // Lead the lowest card to minimize the chance of winning. Prefer non-spades
+            // so trumps are not wasted and are kept available for future ducking.
+            const nonSpades = legalCards.filter(c => c.suitCode !== 'S');
+            const pool = nonSpades.length > 0 ? nonSpades : legalCards;
+            return this.getLowestCard(pool);
+        }
+
+        const winningEntry = this.getCurrentWinningEntry(game);
+        const winningCard = winningEntry ? winningEntry.card : null;
+
+        // Cards that will NOT win the trick are safe to play.
+        const losingCards = winningCard
+            ? legalCards.filter(c => !this.cardBeats(c, winningCard, game))
+            : [];
+
+        if (losingCards.length > 0) {
+            // Duck: shed the highest card that still loses, reducing future risk of
+            // being forced to win later in the hand.
+            return this.getHighestCard(losingCards);
+        }
+
+        // Forced to win (every legal card beats the current winner) - win as cheaply
+        // as possible to preserve lower cards.
+        return this.getLowestCard(legalCards);
     }
 
     /**
