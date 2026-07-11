@@ -120,10 +120,187 @@ function printRows(title, rows, columns) {
   }
 }
 
+function phaseFromRound(roundNumber) {
+  const round = asNumber(roundNumber);
+  if (round <= 4) return 'early(1-4)';
+  if (round <= 9) return 'mid(5-9)';
+  return 'late(10+)';
+}
+
+function scoreStateFromDiff(diff) {
+  if (!Number.isFinite(diff)) return 'unknown';
+  if (diff >= 100) return 'leading_big';
+  if (diff >= 25) return 'leading';
+  if (diff > -25) return 'even';
+  if (diff > -100) return 'trailing';
+  return 'trailing_big';
+}
+
+function getTeamSummary(players, aiLevel) {
+  const teamPlayers = players.filter(player => player.aiLevel === aiLevel);
+  if (teamPlayers.length !== 2) return null;
+
+  const bid = teamPlayers.reduce((sum, player) => sum + asNumber(player.bid), 0);
+  const tricks = teamPlayers.reduce((sum, player) => sum + asNumber(player.tricks), 0);
+  const deficits = teamPlayers.map(player => ({
+    seat: player.seat ?? null,
+    gap: asNumber(player.tricks) - asNumber(player.bid)
+  }));
+
+  return { bid, tricks, deficits };
+}
+
+function getTeamScoreSummary(players, aiLevel) {
+  const teamPlayers = players.filter(player => player.aiLevel === aiLevel);
+  if (teamPlayers.length !== 2) return null;
+  return Math.max(...teamPlayers.map(player => asNumber(player.score)));
+}
+
+function analyzeHardVsMedium(roundList) {
+  const phaseBuckets = new Map();
+  const seatBuckets = new Map();
+  const scoreBuckets = new Map();
+  const positionBuckets = new Map();
+  const recentGames = [];
+  let roundsWithFinalTrickContext = 0;
+
+  for (const round of roundList) {
+    const players = Array.isArray(round.players) ? round.players : [];
+    const aiPlayers = players.filter(player => player.isAI);
+    const hardCount = aiPlayers.filter(player => player.aiLevel === 'hard').length;
+    const mediumCount = aiPlayers.filter(player => player.aiLevel === 'medium').length;
+
+    if (players.length !== 4 || aiPlayers.length !== 4 || hardCount !== 2 || mediumCount !== 2) {
+      continue;
+    }
+
+    const hard = getTeamSummary(players, 'hard');
+    const medium = getTeamSummary(players, 'medium');
+    if (!hard || !medium) continue;
+
+    if (hard.tricks >= hard.bid) {
+      continue;
+    }
+
+    const shortfall = hard.bid - hard.tricks;
+    if (shortfall !== 1) {
+      continue;
+    }
+
+    const missingPlayers = hard.deficits.filter(item => item.gap < 0);
+    if (missingPlayers.length !== 1) {
+      continue;
+    }
+
+    const phase = phaseFromRound(round.round);
+    const hardScore = getTeamScoreSummary(players, 'hard');
+    const mediumScore = getTeamScoreSummary(players, 'medium');
+    const scoreState = scoreStateFromDiff(hardScore - mediumScore);
+    const seat = missingPlayers[0].seat ?? 'unknown';
+    const finalTrickPlays = Array.isArray(round.finalTrick?.plays) ? round.finalTrick.plays : [];
+    const missingPlay = finalTrickPlays.find(play => (play?.seat ?? null) === seat);
+    const missingPosition = missingPlay ? `pos_${missingPlay.order}` : 'unknown';
+
+    if (missingPlay) {
+      roundsWithFinalTrickContext += 1;
+    }
+
+    if (!phaseBuckets.has(phase)) {
+      phaseBuckets.set(phase, { rounds: 0, mediumAlsoSet: 0, hardBid: 0, mediumBid: 0, hardTricks: 0, mediumTricks: 0 });
+    }
+    const phaseBucket = phaseBuckets.get(phase);
+    phaseBucket.rounds += 1;
+    phaseBucket.mediumAlsoSet += medium.tricks < medium.bid ? 1 : 0;
+    phaseBucket.hardBid += hard.bid;
+    phaseBucket.mediumBid += medium.bid;
+    phaseBucket.hardTricks += hard.tricks;
+    phaseBucket.mediumTricks += medium.tricks;
+
+    if (!seatBuckets.has(seat)) {
+      seatBuckets.set(seat, { rounds: 0 });
+    }
+    seatBuckets.get(seat).rounds += 1;
+
+    if (!scoreBuckets.has(scoreState)) {
+      scoreBuckets.set(scoreState, { rounds: 0 });
+    }
+    scoreBuckets.get(scoreState).rounds += 1;
+
+    if (!positionBuckets.has(missingPosition)) {
+      positionBuckets.set(missingPosition, { rounds: 0 });
+    }
+    positionBuckets.get(missingPosition).rounds += 1;
+
+    recentGames.push({
+      gameId: round.gameId || 'unknown',
+      roundNumber: round.round ?? 'unknown',
+      phase,
+      scoreState,
+      missingSeat: seat,
+      missingPosition,
+      hardBid: hard.bid,
+      hardTricks: hard.tricks,
+      mediumBid: medium.bid,
+      mediumTricks: medium.tricks
+    });
+  }
+
+  const phaseRows = [...phaseBuckets.entries()].map(([phase, stats]) => ({
+    phase,
+    rounds: stats.rounds,
+    mediumAlsoSetRate: formatPercent(stats.mediumAlsoSet, stats.rounds),
+    hardBidAvg: stats.rounds ? (stats.hardBid / stats.rounds).toFixed(2) : '0.00',
+    hardTricksAvg: stats.rounds ? (stats.hardTricks / stats.rounds).toFixed(2) : '0.00',
+    mediumBidAvg: stats.rounds ? (stats.mediumBid / stats.rounds).toFixed(2) : '0.00',
+    mediumTricksAvg: stats.rounds ? (stats.mediumTricks / stats.rounds).toFixed(2) : '0.00'
+  })).sort((a, b) => b.rounds - a.rounds);
+
+  const seatRows = [...seatBuckets.entries()].map(([seat, stats]) => ({
+    seat: `seat_${seat}`,
+    rounds: stats.rounds,
+    share: formatPercent(stats.rounds, recentGames.length)
+  })).sort((a, b) => b.rounds - a.rounds);
+
+  const scoreRows = [...scoreBuckets.entries()].map(([scoreState, stats]) => ({
+    scoreState,
+    rounds: stats.rounds,
+    share: formatPercent(stats.rounds, recentGames.length)
+  })).sort((a, b) => b.rounds - a.rounds);
+
+  const positionRows = [...positionBuckets.entries()].map(([position, stats]) => ({
+    position,
+    rounds: stats.rounds,
+    share: formatPercent(stats.rounds, recentGames.length)
+  })).sort((a, b) => b.rounds - a.rounds);
+
+  const positionKnownRows = [...positionBuckets.entries()]
+    .filter(([position]) => position !== 'unknown')
+    .map(([position, stats]) => ({
+      position,
+      rounds: stats.rounds,
+      share: formatPercent(stats.rounds, roundsWithFinalTrickContext)
+    }))
+    .sort((a, b) => b.rounds - a.rounds);
+
+  const recentRows = recentGames.slice(-10);
+
+  return {
+    totalRounds: recentGames.length,
+    roundsWithFinalTrickContext,
+    phaseRows,
+    seatRows,
+    scoreRows,
+    positionRows,
+    positionKnownRows,
+    recentRows
+  };
+}
+
 const humanRounds = rounds.filter(round => Array.isArray(round.players) && round.players.some(player => !player.isAI));
 const aiRounds = rounds.filter(round => Array.isArray(round.players) && round.players.some(player => player.isAI));
 const humanOnlyGames = games.filter(isHumanOnlyGame);
 const aiMixedGames = games.filter(game => Array.isArray(game.players) && game.players.some(player => player.isAI));
+const hvsmBreakdown = analyzeHardVsMedium(rounds);
 
 const { totals, byDifficulty, byGameMode } = aggregate(rounds);
 
@@ -183,6 +360,56 @@ printRows('By Game Mode', modeRows, [
   { key: 'exactBids', label: 'exact' },
   { key: 'avgBidGap', label: 'avg_bid_gap' },
   { key: 'underbidRate', label: 'underbid_rate' }
+]);
+
+console.log(`\nHard one-trick-short / one-miss rounds vs medium: ${hvsmBreakdown.totalRounds}`);
+console.log(`Final-trick position available: ${hvsmBreakdown.roundsWithFinalTrickContext} (${formatPercent(hvsmBreakdown.roundsWithFinalTrickContext, hvsmBreakdown.totalRounds)})`);
+
+printRows('Hard Vs Medium One-Trick Miss By Phase', hvsmBreakdown.phaseRows, [
+  { key: 'phase', label: 'phase' },
+  { key: 'rounds', label: 'rounds' },
+  { key: 'mediumAlsoSetRate', label: 'medium_also_set' },
+  { key: 'hardBidAvg', label: 'hard_bid_avg' },
+  { key: 'hardTricksAvg', label: 'hard_tricks_avg' },
+  { key: 'mediumBidAvg', label: 'medium_bid_avg' },
+  { key: 'mediumTricksAvg', label: 'medium_tricks_avg' }
+]);
+
+printRows('Hard Vs Medium One-Trick Miss By Seat', hvsmBreakdown.seatRows, [
+  { key: 'seat', label: 'seat' },
+  { key: 'rounds', label: 'rounds' },
+  { key: 'share', label: 'share' }
+]);
+
+printRows('Hard Vs Medium One-Trick Miss By Score State', hvsmBreakdown.scoreRows, [
+  { key: 'scoreState', label: 'score_state' },
+  { key: 'rounds', label: 'rounds' },
+  { key: 'share', label: 'share' }
+]);
+
+printRows('Hard Vs Medium One-Trick Miss By Final Trick Position', hvsmBreakdown.positionRows, [
+  { key: 'position', label: 'position' },
+  { key: 'rounds', label: 'rounds' },
+  { key: 'share', label: 'share' }
+]);
+
+printRows('Hard Vs Medium Position (Context-Only)', hvsmBreakdown.positionKnownRows, [
+  { key: 'position', label: 'position' },
+  { key: 'rounds', label: 'rounds' },
+  { key: 'share', label: 'share_known' }
+]);
+
+printRows('Recent Hard Vs Medium One-Trick Misses', hvsmBreakdown.recentRows, [
+  { key: 'gameId', label: 'gameId' },
+  { key: 'roundNumber', label: 'round' },
+  { key: 'phase', label: 'phase' },
+  { key: 'scoreState', label: 'score_state' },
+  { key: 'missingSeat', label: 'missing_seat' },
+  { key: 'missingPosition', label: 'missing_pos' },
+  { key: 'hardBid', label: 'hard_bid' },
+  { key: 'hardTricks', label: 'hard_tricks' },
+  { key: 'mediumBid', label: 'medium_bid' },
+  { key: 'mediumTricks', label: 'medium_tricks' }
 ]);
 
 if (humanOnlyGames.length > 0) {

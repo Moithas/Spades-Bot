@@ -10,6 +10,8 @@
     "benchmark:ai:pool": "node scripts/benchmark_ai_pool.js",
     "ai:selfplay": "node scripts/collect_hard_selfplay_samples.js",
     "ai:train": "node scripts/train_hard_ai.js",
+    "ai:coach": "node scripts/ai_medium_coach.js",
+    "ai:coach:apply": "node scripts/ai_medium_coach.js 8 8 333 90000 6 12 --apply",
     "telemetry:hard": "node scripts/view_hard_telemetry.js",
     "telemetry:hard:analyze": "node scripts/analyze_hard_telemetry.js",
     "telemetry:game": "node scripts/analyze_game_telemetry.js"

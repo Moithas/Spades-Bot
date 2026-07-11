@@ -2209,6 +2209,25 @@ export default class GameManager {
                 blindNilBid: !!p.isBlindNil
             }));
 
+            const finalTrick = this.trickHistory.length > 0 ? this.trickHistory[this.trickHistory.length - 1] : null;
+            const finalTrickContext = finalTrick ? {
+                plays: (Array.isArray(finalTrick.plays) ? finalTrick.plays : []).map((play, playIndex) => {
+                    const seated = this.players.find(player => player.id === play.player.id);
+                    const seat = this.players.findIndex(player => player.id === play.player.id) + 1;
+                    return {
+                        order: playIndex + 1,
+                        seat: seat > 0 ? seat : null,
+                        playerId: play.player.id,
+                        team: seated?.team ?? null,
+                        aiLevel: seated?.isAI ? (seated.aiLevel || 'medium') : 'human'
+                    };
+                }),
+                winnerSeat: (() => {
+                    const winnerIndex = this.players.findIndex(player => player.id === finalTrick?.winner?.id);
+                    return winnerIndex >= 0 ? winnerIndex + 1 : null;
+                })()
+            } : null;
+
             gameTelemetryStore.recordRound({
                 gameId: this.telemetryGameId,
                 guildId: this.guildId || null,
@@ -2219,7 +2238,8 @@ export default class GameManager {
                 humanPlayerCount: this.players.filter(p => !p.isAI).length,
                 aiPlayerCount: this.players.filter(p => p.isAI).length,
                 humanOnlyGame: this.players.every(p => !p.isAI),
-                players: roundPlayerSnapshots
+                players: roundPlayerSnapshots,
+                finalTrick: finalTrickContext
             });
         } catch (error) {
             logger.error('Failed to persist general round telemetry:', error);

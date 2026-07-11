@@ -1,0 +1,9 @@
+node_modules/
+
+# Generated telemetry and learning data (large, runtime-generated)
+stats/gameTelemetry.json
+stats/aiHardTelemetry.json
+stats/aiLearningProfile.json
+
+# Benchmark output artifacts
+stats/benchmark_*.json
