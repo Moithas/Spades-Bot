@@ -1,5 +1,10 @@
 node_modules/
 
+# Secrets - never commit environment files
+.env
+.env.*
+!.env.example
+
 # Generated telemetry and learning data (large, runtime-generated)
 stats/gameTelemetry.json
 stats/aiHardTelemetry.json
