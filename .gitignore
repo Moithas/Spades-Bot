@@ -12,3 +12,7 @@ stats/aiLearningProfile.json
 
 # Benchmark output artifacts
 stats/benchmark_*.json
+
+# Scheduled trainer runtime artifacts
+stats/trainer.log
+stats/.trainer.lock

@@ -52,6 +52,7 @@ export class AILearning {
         selfPlayHistory: Array.isArray(parsed.selfPlayHistory) ? parsed.selfPlayHistory : [],
         evaluations: Array.isArray(parsed.evaluations) ? parsed.evaluations : []
       };
+      this.loadedMtimeMs = fs.statSync(LEARNING_FILE).mtimeMs;
     } catch (error) {
       logger.error('❌ Failed to load AI learning profile:', error);
       this.data = clone(DEFAULT_PROFILE);
@@ -62,12 +63,31 @@ export class AILearning {
     try {
       this.data.updatedAt = new Date().toISOString();
       fs.writeFileSync(LEARNING_FILE, JSON.stringify(this.data, null, 2), 'utf8');
+      this.loadedMtimeMs = fs.statSync(LEARNING_FILE).mtimeMs;
     } catch (error) {
       logger.error('❌ Failed to save AI learning profile:', error);
     }
   }
 
+  /**
+   * Reload the profile from disk if the file has changed since we last read it.
+   * Lets a separate scheduled trainer process promote new profiles that the live
+   * bot picks up automatically at the next game, without a restart.
+   */
+  maybeReload() {
+    try {
+      if (!fs.existsSync(LEARNING_FILE)) return;
+      const mtime = fs.statSync(LEARNING_FILE).mtimeMs;
+      if (this.loadedMtimeMs === undefined || mtime > this.loadedMtimeMs) {
+        this.loadSync();
+      }
+    } catch (error) {
+      // On any stat/read error, keep the current in-memory profile.
+    }
+  }
+
   getHardProfile() {
+    this.maybeReload();
     return {
       ...clone(DEFAULT_PROFILE).hardProfile,
       ...(this.data.hardProfile || {})
