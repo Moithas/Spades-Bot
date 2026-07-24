@@ -746,6 +746,39 @@ export class AIPlayer extends Player {
     }
 
     /**
+     * Card selection when following while our partner is on an active Nil bid.
+     * Priority is PROTECTING the Nil (worth +/-100) over our own contract:
+     *  - If the Nil partner is currently winning the trick, overtake to save the Nil.
+     *  - If the Nil bidder has not played and an opponent is winning, COVER with a HIGH
+     *    card so the Nil bidder can safely duck underneath us.
+     *  - Otherwise the Nil bidder is already safe, so conserve and dump low.
+     */
+    selectNilProtectionFollow(game, legalCards, currentWinningCard, currentWinningPlayer, partner) {
+        const winners = currentWinningCard
+            ? legalCards.filter(c => this.cardBeats(c, currentWinningCard, game))
+            : [];
+        const partnerIsCurrentWinner = !!(currentWinningPlayer && partner && currentWinningPlayer.id === partner.id);
+        const nilHasPlayed = Array.isArray(game.trick) && game.trick.some(e => e.player.id === partner.id);
+        const opponentWinning = !!(currentWinningPlayer && currentWinningPlayer.team !== this.team);
+
+        // Nil partner is winning the trick (would break the Nil) -> overtake cheaply.
+        if (partnerIsCurrentWinner && winners.length > 0) {
+            return this.getLowestCard(winners);
+        }
+
+        // Nil bidder still to play and an opponent leads the trick -> cover HIGH so the
+        // Nil bidder can duck under us (play the King, not a fragile middling winner).
+        if (!nilHasPlayed && opponentWinning && winners.length > 0) {
+            return this.getHighestCard(winners);
+        }
+
+        // Nil bidder is already safe (or we cannot win) -> conserve, dump lowest non-spade.
+        const nonSpades = legalCards.filter(c => c.suitCode !== 'S');
+        if (nonSpades.length > 0) return this.getLowestCard(nonSpades);
+        return this.getLowestCard(legalCards);
+    }
+
+    /**
      * Select a card when following in a trick
      */
     selectFollowCard(game, legalCards, partnerIsNil, opponentOnNil) {
@@ -823,8 +856,14 @@ export class AIPlayer extends Player {
             }
         }
 
-        // If partner is winning OR partner is on Nil, NEVER take the trick from them
-        if (partnerIsWinning || partnerIsNil) {
+        // If partner is on an active Nil, actively PROTECT them (cover), which is the
+        // opposite of the ordinary "partner is winning" case handled just below.
+        if (partnerIsNil) {
+            return this.selectNilProtectionFollow(game, legalCards, currentWinningCard, currentWinningPlayer, partner);
+        }
+
+        // If our (non-Nil) partner is winning, never overtake them - dump low.
+        if (partnerIsWinning) {
             // Prefer to discard non-spade low card if available
             const nonSpades = legalCards.filter(c => c.suitCode !== 'S');
             if (nonSpades.length > 0) return this.getLowestCard(nonSpades);
