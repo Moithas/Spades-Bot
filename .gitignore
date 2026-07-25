@@ -9,6 +9,7 @@ node_modules/
 stats/gameTelemetry.json
 stats/aiHardTelemetry.json
 stats/aiLearningProfile.json
+stats/humanPlayData.json
 
 # Benchmark output artifacts
 stats/benchmark_*.json

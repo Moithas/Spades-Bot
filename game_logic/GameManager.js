@@ -11,6 +11,7 @@ import { playerStats } from '../stats/PlayerStats.js';
 import { aiLearning } from '../stats/AILearning.js';
 import { aiHardTelemetryStore } from '../stats/AIHardTelemetry.js';
 import { gameTelemetryStore } from '../stats/GameTelemetry.js';
+import { playDataStore } from '../stats/PlayDataStore.js';
 import { trashTalk } from './TrashTalk.js';
 
 /**
@@ -2245,6 +2246,69 @@ export default class GameManager {
             logger.error('Failed to persist general round telemetry:', error);
         }
 
+        // --- IMITATION DATA: capture full hands + play sequence for games with humans ---
+        // Recorded per round, tagged with gameMode so classic (2v2) and cutthroat data
+        // stay separable. Hands are reconstructed from the trick history (each player's
+        // 13 played cards = their dealt hand). Only games that include a human are stored.
+        try {
+            const humanCount = this.players.filter(p => !p.isAI).length;
+            if (humanCount > 0 && Array.isArray(this.trickHistory) && this.trickHistory.length > 0) {
+                const seatIndexById = new Map(this.players.map((p, i) => [p.id, i]));
+                const handBySeat = this.players.map(() => []);
+                const tricks = [];
+
+                for (let ti = 0; ti < this.trickHistory.length; ti++) {
+                    const t = this.trickHistory[ti];
+                    const plays = Array.isArray(t.plays) ? t.plays : [];
+                    const leadSeatIdx = plays.length ? seatIndexById.get(plays[0].player.id) : undefined;
+                    const trickPlays = plays.map(pl => {
+                        const seatIdx = seatIndexById.get(pl.player.id);
+                        const cardCode = pl.card.rankCode + pl.card.suitCode;
+                        if (seatIdx !== undefined) handBySeat[seatIdx].push(cardCode);
+                        return {
+                            seat: seatIdx !== undefined ? seatIdx + 1 : null,
+                            playerId: pl.player.id,
+                            card: cardCode
+                        };
+                    });
+                    const winnerSeatIdx = t.winner ? seatIndexById.get(t.winner.id) : undefined;
+                    tricks.push({
+                        trickNo: ti + 1,
+                        leadSeat: leadSeatIdx !== undefined ? leadSeatIdx + 1 : null,
+                        plays: trickPlays,
+                        winnerSeat: winnerSeatIdx !== undefined ? winnerSeatIdx + 1 : null
+                    });
+                }
+
+                playDataStore.recordRound({
+                    gameId: this.telemetryGameId,
+                    guildId: this.guildId || null,
+                    channelId: this.channelId || null,
+                    round: this.currentRound,
+                    gameMode: this.gameMode,
+                    targetScore: this.options?.targetScore,
+                    humanPlayerCount: humanCount,
+                    aiPlayerCount: this.players.filter(p => p.isAI).length,
+                    players: this.players.map((p, index) => ({
+                        seat: index + 1,
+                        discordId: p.discordId || p.id || null,
+                        username: p.username,
+                        isAI: !!p.isAI,
+                        aiLevel: p.isAI ? (p.aiLevel || 'medium') : 'human',
+                        team: p.team,
+                        bid: p.bid ?? 0,
+                        tricks: p.tricks ?? 0,
+                        nilBid: !!p.isNil,
+                        blindNilBid: !!p.isBlindNil,
+                        hand: handBySeat[index]
+                    })),
+                    tricks
+                });
+            }
+        } catch (error) {
+            logger.error('Failed to persist imitation play data:', error);
+        }
+
         // --- SPECTATOR NOTIFICATIONS: Notify about round end ---
         if (this.spectatorView) {
             let roundNotif = `**Hand ${this.currentRound} Complete!**\n`;
@@ -2544,7 +2608,7 @@ export default class GameManager {
                     roundSummary += `✅ Team ${teamId} made bid of ${totalBid} (+${contractScore} points, +${bags} bags)\n`;
                 } else {
                     contractScore = -(totalBid * 10);
-                    roundSummary += `❌ Team ${teamId} set! (${contractScore} points)\n`;
+                    roundSummary += `❌ Team ${teamId} set! (${contractScore} points, short ${totalBid - totalTricks})\n`;
                     
                     // Trash talk: Opponent team set
                     const opposingTeam = teamId === '1' ? 2 : 1;

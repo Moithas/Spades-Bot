@@ -90,11 +90,9 @@ export class AIPlayer extends Player {
             return { forceSetAttempt: false, forceBagTrap: false };
         }
 
-        const hasHumanOpponents = game.players.some(p => !p.isAI && p.team !== this.team);
-        if (!hasHumanOpponents) {
-            return { forceSetAttempt: false, forceBagTrap: false };
-        }
-
+        // NOTE: This applies to ALL opponents (bots included), not just humans. Gating it
+        // to human opponents made synthetic AI-vs-AI benchmarks test a different bot than
+        // the one real players face, and produced inconsistent behavior in hybrid teams.
         const myTeam = this.team;
         const opponentTeam = myTeam === 1 ? 2 : 1;
         const myState = this.getTeamBidAndTricks(game, myTeam);
@@ -108,10 +106,16 @@ export class AIPlayer extends Player {
         // Anti-human set pressure:
         // - Opponents need a large share of remaining tricks, OR
         // - Late-hand window where even one denied trick can set them.
-        const forceSetAttempt =
+        // Only pursue the set while it is still LIVE. Once the opponent is already
+        // mathematically set (needs more tricks than remain), STOP forcing tricks -
+        // taking more only piles up our own bags, and dumping low hands the leftover
+        // tricks to the opponent (bagging THEM instead).
+        const setStillLive = oppNeed >= 1 && oppNeed <= tricksLeft;
+        const forceSetAttempt = setStillLive && (
             oppNeed >= Math.max(2, Math.ceil(tricksLeft * 0.5)) ||
             (oppNeed >= 1 && tricksLeft <= 3) ||
-            oppNeedRate >= 0.5;
+            oppNeedRate >= 0.5
+        );
 
         // Anti-human bag trap: if opponents are near bag penalty and already made contract, force awkward tricks.
         const oppMadeBid = oppState.tricks >= oppState.bid;
@@ -257,6 +261,74 @@ export class AIPlayer extends Player {
     }
 
     /**
+     * Human-derived trick-counting bid model (hard/classic only).
+     * Reverse-engineered from expert play and validated 16/16 in
+     * scripts/test_human_bid.js. Counts SURE tricks plus SAFE ruffs:
+     *   - +1 per side-suit Ace; +1 per side-suit King in a 2-5 card suit.
+     *   - Spade honors as a solid sequence from the top (A, then K, Q, J);
+     *     low spades are never bid, and long trump length adds nothing.
+     *   - Ruffs from short side suits (len<=2): (3 - len) each (singleton 2,
+     *     doubleton 1, void 3), shortest first, capped by spare trumps minus a
+     *     1-card reserve (the reserve doubles as the spade sacrificed to promote
+     *     a bare KS). A King-headed short suit (K, no A) only ruffs when trump is
+     *     ample (hold AS, or 5+ spades); otherwise the King is the trick.
+     * Returns the integer sure-trick count (Nil handled separately by callers).
+     * @returns {number}
+     */
+    computeHumanTrickBid() {
+        const A = 14, K = 13, Q = 12, J = 11;
+        const bySuit = { S: [], H: [], D: [], C: [] };
+        for (const c of this.hand) bySuit[c.suitCode].push(c.value);
+        const has = (suit, v) => bySuit[suit].includes(v);
+
+        // Side-suit Aces and protected Kings.
+        let sideTricks = 0;
+        for (const suit of ['H', 'D', 'C']) {
+            const len = bySuit[suit].length;
+            if (has(suit, A)) sideTricks++;
+            if (has(suit, K) && len >= 2 && len <= 5) sideTricks++;
+        }
+
+        // Spade honors as a solid sequence from the top.
+        const hasAS = has('S', A), hasKS = has('S', K), hasQS = has('S', Q), hasJS = has('S', J);
+        const spadeCount = bySuit.S.length;
+        let spadeTricks = 0;
+        if (hasAS) spadeTricks++;
+        if (hasKS) spadeTricks++;
+        if (hasAS && hasKS && hasQS) spadeTricks++;
+        if (hasAS && hasKS && hasQS && hasJS) spadeTricks++;
+
+        // Ruffs from short side suits, capped by spare trumps (keep 1 in reserve).
+        // Trump-quality gate: only count ruffs when the trump behind them will reliably
+        // cash — either we hold A♠ (trump control) or we have 4+ spades (length so a low
+        // ruff survives being overtrumped/pulled). With only 3-or-fewer low spades the
+        // ruffer is exactly the card that got caught in the set-by-one data, so don't
+        // bank on it. (4+ spades always qualifies, regardless of the ace.)
+        let available = Math.max(0, (spadeCount - spadeTricks) - 1);
+        const trumpQualityForRuff = hasAS || spadeCount >= 4;
+        const shortSuits = ['H', 'D', 'C']
+            .map(s => ({ s, len: bySuit[s].length }))
+            .filter(x => x.len <= 2)
+            .sort((a, b) => a.len - b.len);
+        let ruffs = 0;
+        if (trumpQualityForRuff) {
+            for (const { s, len } of shortSuits) {
+                if (has(s, K) && !has(s, A)) {
+                    const ampleTrump = hasAS || spadeCount >= 5;
+                    if (!ampleTrump) continue; // bare King is the trick, not a ruff
+                }
+                // Dial-back: the bot's passive play realizes at most one ruff per short
+                // suit reliably. Multi-ruffs (singleton=2, void=3) are over-optimistic for
+                // AI play and were the dominant cause of set-by-one hands, so cap at 1.
+                const take = Math.min(3 - len, available, 1);
+                if (take > 0) { ruffs += take; available -= take; }
+            }
+        }
+
+        return sideTricks + spadeTricks + ruffs;
+    }
+
+    /**
      * AI makes a bid based on hand strength and position
      * @param {object} game - The game instance for context
      * @returns {number} Bid amount (0 for Nil, 1-13 otherwise)
@@ -286,6 +358,14 @@ export class AIPlayer extends Player {
         this.hand.forEach(c => suits[c.suitCode]++);
         const voids = Object.values(suits).filter(count => count === 0).length;
         bid += voids * 0.5;
+
+        // Expert (hard) + classic: replace the heuristic hand-evaluation above with
+        // the validated human trick-counting model (sure winners + safe ruffs).
+        // Situational nudges, profile bidAdjustment, and Nil logic below still apply.
+        // Cutthroat and medium/easy keep the heuristic accumulation unchanged.
+        if (isExpert && !game.isCutthroat()) {
+            bid = this.computeHumanTrickBid();
+        }
         
         // --- OPPONENT MODELING: Adjust bid based on opponents ---
         if (this.opponentProfiles.size > 0) {
@@ -731,8 +811,13 @@ export class AIPlayer extends Player {
             return this.getHighestCard(cardsToConsider);
         }
 
-        // If we have extra tricks, lead MEDIUM cards to avoid taking
+        // If we have extra tricks, avoid taking more. Hard deliberately sheds by leading
+        // low (giving up the lead); other levels lead mid-range.
         if (hasExtraTricks) {
+            if (isExpert) {
+                const nonSpadesLead = cardsToConsider.filter(c => c.suitCode !== 'S');
+                return this.getLowestCard(nonSpadesLead.length ? nonSpadesLead : cardsToConsider);
+            }
             return this.getMidRangeCard(cardsToConsider);
         }
 
@@ -776,6 +861,30 @@ export class AIPlayer extends Player {
         const nonSpades = legalCards.filter(c => c.suitCode !== 'S');
         if (nonSpades.length > 0) return this.getLowestCard(nonSpades);
         return this.getLowestCard(legalCards);
+    }
+
+    /**
+     * Human-style bag-avoidance discard (hard/classic). When we are going to LOSE the
+     * trick, shed the HIGHEST card that still loses, so dangerous middle cards cannot win
+     * unwanted bags later (the bot owner's play rule: "when I can't win, throw the largest
+     * card I did not account a trick for"). Prefers non-spades to conserve trumps. If every
+     * legal card would win (forced to take it), win as cheaply as possible.
+     */
+    selectHumanDiscard(game, legalCards, currentWinningCard) {
+        const losers = currentWinningCard
+            ? legalCards.filter(c => !this.cardBeats(c, currentWinningCard, game))
+            : legalCards.slice();
+        if (losers.length === 0) {
+            return this.getLowestWinningCard(legalCards, currentWinningCard, game) || this.getLowestCard(legalCards);
+        }
+        // "Cards I did not account a trick for": protect accounted winners — never
+        // voluntarily throw an Ace or King (a King beaten THIS trick, e.g. KD under AD,
+        // still wins later once the Ace is gone). Shed only from Queen-and-below.
+        const sheddable = losers.filter(c => c.value < 13);
+        const pool = sheddable.length > 0 ? sheddable : losers;
+        // Prefer to shed non-spades to conserve trumps for ruffing.
+        const nonSpadePool = pool.filter(c => c.suitCode !== 'S');
+        return this.getHighestCard(nonSpadePool.length > 0 ? nonSpadePool : pool);
     }
 
     /**
@@ -862,9 +971,14 @@ export class AIPlayer extends Player {
             return this.selectNilProtectionFollow(game, legalCards, currentWinningCard, currentWinningPlayer, partner);
         }
 
-        // If our (non-Nil) partner is winning, never overtake them - dump low.
+        // If our (non-Nil) partner is winning, never overtake them.
         if (partnerIsWinning) {
-            // Prefer to discard non-spade low card if available
+            // Hard + classic in shed mode (contract already made): shed our highest safe
+            // loser for bag avoidance (won't overtake partner's winner).
+            if (isExpert && !game.isCutthroat() && hasExtraTricks) {
+                return this.selectHumanDiscard(game, legalCards, currentWinningCard);
+            }
+            // Otherwise duck low (keep high cards that may promote into our own winners).
             const nonSpades = legalCards.filter(c => c.suitCode !== 'S');
             if (nonSpades.length > 0) return this.getLowestCard(nonSpades);
             return this.getLowestCard(legalCards);
@@ -944,13 +1058,19 @@ export class AIPlayer extends Player {
             }
         }
 
-        // If we have extra tricks, or can't/shouldn't win, dump low cards (prefer non-spade to conserve trumps)
+        // If we have extra tricks (contract made), shed to avoid bags. Hard + classic sheds
+        // the HIGHEST card that still loses (dangerous middle cards can't win unwanted bags
+        // later); other levels just dump low.
         if (hasExtraTricks) {
+            if (isExpert && !game.isCutthroat()) {
+                return this.selectHumanDiscard(game, legalCards, currentWinningCard);
+            }
             const nonSpades = legalCards.filter(c => c.suitCode !== 'S');
             return nonSpades.length ? this.getLowestCard(nonSpades) : this.getLowestCard(legalCards);
         }
 
-        // Default: play lowest card to avoid winning; prefer non-spade
+        // Default (still need tricks but can't win this one): duck LOW to preserve high
+        // cards that may promote into winners; prefer non-spade to conserve trumps.
         const nonSpadesDefault = legalCards.filter(c => c.suitCode !== 'S');
         return nonSpadesDefault.length ? this.getLowestCard(nonSpadesDefault) : this.getLowestCard(legalCards);
     }
@@ -984,9 +1104,14 @@ export class AIPlayer extends Player {
         const bagDanger = teamBags >= 8 && teamExtra;
 
         if (this.aiLevel === 'hard') {
+            // Coupled with the human trick-count bid: because that bid is an accurate,
+            // conservative count of sure winners + safe ruffs, seek tricks only until the
+            // team's contract is met, then deliberately shed to avoid bags (paired with
+            // selectHumanDiscard's shed-highest-loser play).
+            const contractMade = teamTricks >= teamBidTarget;
             return {
-                needsTricks: teamNeeds || ownNeeds,
-                hasExtraTricks: bagDanger && !teamNeeds
+                needsTricks: !contractMade,
+                hasExtraTricks: contractMade
             };
         }
 

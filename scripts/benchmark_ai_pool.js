@@ -24,6 +24,9 @@ function emptyHandMetrics() {
     hands: 0,
     contractsMade: 0,
     sets: 0,
+    setsShort1: 0,
+    setsShort2: 0,
+    setsShort3plus: 0,
     bagsTaken: 0,
     bagPenalties: 0,
     nilSuccesses: 0,
@@ -148,4 +151,15 @@ console.log(`Team 2 wins: ${team2Wins} (${completed > 0 ? ((team2Wins / complete
 console.log(`Ties: ${ties}`);
 console.log(`Average hands per game: ${summary.avgHands.toFixed(2)}`);
 console.log(`Average score margin (Team1-Team2): ${summary.avgMargin.toFixed(2)}`);
+
+const m1 = handMetrics.team1;
+const m2 = handMetrics.team2;
+const pct = (a, b) => (b > 0 ? `${((a / b) * 100).toFixed(1)}%` : 'n/a');
+const per = (a, b) => (b > 0 ? (a / b).toFixed(2) : 'n/a');
+console.log('--- Hand Metrics (contract accuracy & bags) ---');
+console.log(`Team 1 (${team1Difficulty}): hands ${m1.hands} | contract-make ${pct(m1.contractsMade, m1.hands)} | sets ${m1.sets} | bags/hand ${per(m1.bagsTaken, m1.hands)} | bag penalties ${m1.bagPenalties} | nil ${m1.nilSuccesses}/${m1.nilSuccesses + m1.nilFails}`);
+console.log(`Team 2 (${team2Difficulty}): hands ${m2.hands} | contract-make ${pct(m2.contractsMade, m2.hands)} | sets ${m2.sets} | bags/hand ${per(m2.bagsTaken, m2.hands)} | bag penalties ${m2.bagPenalties} | nil ${m2.nilSuccesses}/${m2.nilSuccesses + m2.nilFails}`);
+console.log('--- Set Margin (how many tricks short when set) ---');
+console.log(`Team 1 (${team1Difficulty}): total sets ${m1.sets} | short by 1: ${m1.setsShort1} (${pct(m1.setsShort1, m1.sets)}) | short by 2: ${m1.setsShort2} (${pct(m1.setsShort2, m1.sets)}) | short by 3+: ${m1.setsShort3plus} (${pct(m1.setsShort3plus, m1.sets)})`);
+console.log(`Team 2 (${team2Difficulty}): total sets ${m2.sets} | short by 1: ${m2.setsShort1} (${pct(m2.setsShort1, m2.sets)}) | short by 2: ${m2.setsShort2} (${pct(m2.setsShort2, m2.sets)}) | short by 3+: ${m2.setsShort3plus} (${pct(m2.setsShort3plus, m2.sets)})`);
 console.log(`Elapsed: ${elapsed.toFixed(2)}s`);

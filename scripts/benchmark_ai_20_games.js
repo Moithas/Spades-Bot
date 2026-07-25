@@ -34,6 +34,9 @@ function emptyHandMetrics() {
     hands: 0,
     contractsMade: 0,
     sets: 0,
+    setsShort1: 0,
+    setsShort2: 0,
+    setsShort3plus: 0,
     bagsTaken: 0,
     bagPenalties: 0,
     nilSuccesses: 0,
@@ -84,10 +87,14 @@ function parseRoundMetrics(roundSummary = '', teamScoreDisplay = '') {
       continue;
     }
 
-    match = line.match(/^❌ Team (1|2) set! \(([-\d]+) points\)$/);
+    match = line.match(/^❌ Team (1|2) set! \(([-\d]+) points(?:, short (\d+))?\)$/);
     if (match) {
       const team = match[1] === '1' ? metrics.team1 : metrics.team2;
       team.sets += 1;
+      const short = match[3] ? Number.parseInt(match[3], 10) : 0;
+      if (short === 1) team.setsShort1 += 1;
+      else if (short === 2) team.setsShort2 += 1;
+      else if (short >= 3) team.setsShort3plus += 1;
       continue;
     }
 
