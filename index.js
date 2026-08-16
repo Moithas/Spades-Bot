@@ -25,6 +25,8 @@ import {
 import GameManager from './game_logic/GameManager.js';
 import { buildGameComms } from './game_logic/gameComms.js';
 import { gameStateStore } from './stats/GameStateStore.js';
+import { scheduleThreadCleanup } from './game_logic/threadCleanup.js';
+import { getGuildSettings, updateGuildSettings } from './guildSettings.js';
 import { renderHand, renderSingleCard, renderTrickCards, renderCardBacks } from './game_logic/CardRenderer.js';
 import { AttachmentBuilder } from 'discord.js'; 
 import { playerStats } from './stats/PlayerStats.js';
@@ -750,6 +752,17 @@ const commands = [
         .addSubcommand(subcommand =>
             subcommand.setName('premium')
                 .setDescription('View premium features and subscription status.')
+        )
+        .addSubcommand(subcommand =>
+            subcommand.setName('autodelete')
+                .setDescription('Server setting: auto-delete a game thread after it ends (admin).')
+                .addIntegerOption(opt =>
+                    opt.setName('minutes')
+                       .setDescription('Minutes to wait before deleting a finished thread (0 = disable). Omit to view.')
+                       .setRequired(false)
+                       .setMinValue(0)
+                       .setMaxValue(60)
+                )
         ),
 ].map(command => command.toJSON());
 
@@ -1839,6 +1852,7 @@ client.on('interactionCreate', async interaction => {
                             
                             activeGames.delete(payload.channelId);
                             await channel.send(`🎉 **GAME OVER!** 🎉\n**Winner:** ${payload.message}`);
+                            scheduleThreadCleanup(channel);
                         } catch (err) {
                             logger.error('❌ Failed to handle game over:', err);
                         }
@@ -4544,6 +4558,7 @@ client.on('interactionCreate', async interaction => {
                             
                             activeGames.delete(payload.channelId);
                             await channel.send(`🎉 **GAME OVER!** 🎉\n**Winner:** ${payload.message}`);
+                            scheduleThreadCleanup(channel);
                         } catch (err) {
                             logger.error('❌ Failed to handle game over:', err);
                         }
@@ -5689,6 +5704,60 @@ client.on('interactionCreate', async interaction => {
         // ----------------------------------------------------
         // Handle /spades premium command
         // ----------------------------------------------------
+        // ----------------------------------------------------
+        // /spades autodelete (guild admin: finished-thread auto-delete policy)
+        // ----------------------------------------------------
+        if (subcommand === 'autodelete') {
+            try {
+                if (!interaction.guildId) {
+                    return interaction.reply({ content: '❌ This setting can only be changed inside a server.', ephemeral: true });
+                }
+
+                const perms = interaction.memberPermissions;
+                const canManage = perms && (
+                    perms.has(PermissionsBitField.Flags.ManageThreads) ||
+                    perms.has(PermissionsBitField.Flags.ManageChannels) ||
+                    perms.has(PermissionsBitField.Flags.Administrator)
+                );
+                if (!canManage) {
+                    return interaction.reply({
+                        content: '🚫 You need the **Manage Threads** (or Manage Channels) permission to change this server setting.',
+                        ephemeral: true
+                    });
+                }
+
+                const minutes = interaction.options.getInteger('minutes');
+                const current = await getGuildSettings(interaction.guildId);
+
+                // No value provided → show current setting.
+                if (minutes === null) {
+                    const status = current.autoDeleteThread
+                        ? `✅ **Enabled** — finished game threads are deleted after **${current.autoDeleteThreadMinutes} minute${current.autoDeleteThreadMinutes !== 1 ? 's' : ''}**.`
+                        : '❌ **Disabled** — finished game threads are kept.';
+                    return interaction.reply({
+                        content: `🧵 **Auto-delete finished game threads**\n${status}\n\nSet with \`/spades autodelete minutes:<0-60>\` (0 disables). Only affects games run in threads.`,
+                        ephemeral: true
+                    });
+                }
+
+                const patch = minutes <= 0
+                    ? { autoDeleteThread: false }
+                    : { autoDeleteThread: true, autoDeleteThreadMinutes: minutes };
+                await updateGuildSettings(interaction.guildId, patch);
+
+                const msg = minutes <= 0
+                    ? '🧵 Auto-delete of finished game threads is now **disabled** for this server.'
+                    : `🧵 Finished game threads will now auto-delete after **${minutes} minute${minutes !== 1 ? 's' : ''}** for this server.`;
+                return interaction.reply({ content: msg, ephemeral: true });
+            } catch (error) {
+                logger.error('❌ Error in /spades autodelete command:', error);
+                if (!interaction.replied && !interaction.deferred) {
+                    return interaction.reply({ content: '❌ An error occurred while updating the setting.', ephemeral: true });
+                }
+            }
+            return;
+        }
+
         if (subcommand === 'premium') {
             try {
                 const isPremium = await checkPremiumEntitlement(client, interaction.user.id, interaction.guildId);

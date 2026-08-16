@@ -14,6 +14,9 @@ stats/humanPlayData.json
 # Persisted in-progress games (restart recovery)
 stats/activeGames.json
 
+# Per-guild settings (runtime)
+guildSettings.json
+
 # Benchmark output artifacts
 stats/benchmark_*.json
 
