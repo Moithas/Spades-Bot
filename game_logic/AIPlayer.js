@@ -20,6 +20,11 @@ export class AIPlayer extends Player {
         // Personality tuning parameters
         this.riskAversion = 0.7; // 0..1 higher means avoid risky plays more
         this.aggressiveness = 0.5; // 0..1 higher means more likely to trump/seek tricks
+        // When a King would win but the Ace is still live and opponents are yet to act,
+        // play it only if a Monte Carlo rollout gives it at least this chance of holding the
+        // trick; otherwise duck and keep it. Lower = gamble the King more; higher = protect
+        // it more. Tunable.
+        this.vulnerableKingHoldThreshold = 0.5;
         this.aiLevel = 'medium';
         this.monteCarloTrials = 200; // default, can be tuned by GameManager
         this.nilBidThreshold = 0.82;
@@ -986,23 +991,39 @@ export class AIPlayer extends Player {
 
         // Partner is NOT winning - consider taking the trick if we need tricks
         if (needsTricks) {
-            if (canWin) {
-                if (isExpert) {
-                    const winners = legalCards.filter(c => this.cardBeats(c, currentWinningCard, game));
-                    if (winners.length > 0 && winners.length <= 3) {
-                        const simWinner = this.selectBySimulation(game, winners, 'win');
-                        if (simWinner) return simWinner;
-                    }
+            // Winning cards among our legal plays. For the "King under a live Ace" problem we
+            // don't hard-ban the King: when a winner is a "vulnerable King" (King, Ace still
+            // live, opponents yet to act) we keep it only if a Monte Carlo rollout says it
+            // actually has a fair chance to hold this trick. That ducks the King when the Ace
+            // is likely behind us, but still plays it when the Ace is likely with an already
+            // -committed player or our partner (where the King wins). The Queen is never
+            // treated this way. If every winner is a King that fails the check, we duck low.
+            const allWinners = canWin ? legalCards.filter(c => this.cardBeats(c, currentWinningCard, game)) : [];
+            const winners = allWinners.filter(c => {
+                if (!this.isVulnerableKingWinner(c, game)) return true;
+                try {
+                    const kingTrials = this.aiLevel === 'hard' ? Math.max(200, this.monteCarloTrials)
+                        : this.aiLevel === 'easy' ? 50 : this.monteCarloTrials;
+                    const holdProb = this.monteCarloWinProbability(c, game, kingTrials);
+                    return holdProb >= this.vulnerableKingHoldThreshold;
+                } catch (e) {
+                    logger.error('❌ Monte Carlo failed (vulnerable-King gate):', e);
+                    return false; // can't evaluate → don't gamble the King
+                }
+            });
+            const winAttemptWorthwhile = winners.length > 0;
+
+            if (winAttemptWorthwhile) {
+                if (isExpert && winners.length <= 3) {
+                    const simWinner = this.selectBySimulation(game, winners, 'win');
+                    if (simWinner) return simWinner;
                 }
 
-                const candidate = this.getLowestWinningCard(legalCards, currentWinningCard, game);
-
-                if (isExpert) {
-                    const winners = legalCards.filter(c => this.cardBeats(c, currentWinningCard, game));
-                    if (winners.length > 0 && this.aggressiveness >= 0.76) {
-                        return this.getHighestCard(winners);
-                    }
+                if (isExpert && this.aggressiveness >= 0.76) {
+                    return this.getHighestCard(winners);
                 }
+
+                const candidate = this.getLowestCard(winners);
 
                 // Use Monte Carlo to evaluate candidate if it's risky or marginal
                 const trials = this.aiLevel === 'hard' ? Math.max(200, this.monteCarloTrials) : this.aiLevel === 'easy' ? 50 : this.monteCarloTrials;
@@ -1012,7 +1033,6 @@ export class AIPlayer extends Player {
                     if (prob < 0.5) {
                         let best = candidate;
                         let bestProb = prob;
-                        const winners = legalCards.filter(c => this.cardBeats(c, currentWinningCard, game));
                         for (const w of winners) {
                             const p = this.monteCarloWinProbability(w, game, Math.max(40, Math.floor(trials / 4)));
                             if (p > bestProb) {
@@ -1026,7 +1046,7 @@ export class AIPlayer extends Player {
                     logger.error('❌ Monte Carlo failed:', e);
                 }
                 return candidate;
-            } else {
+            } else if (!canWin) {
                 // Can't win by following suit - check if we can trump
                 const leadSuit = game.trick[0].card.suitCode;
                 const hasLeadSuit = this.hand.some(c => c.suitCode === leadSuit);
@@ -1202,6 +1222,13 @@ export class AIPlayer extends Player {
         return !acePlayed;
     }
 
+    /**
+     * The King is "vulnerable" (not worth playing to win) when the Ace of its suit is still
+     * live AND at least one player has yet to act: the King is beaten only by the Ace, so it
+     * cannot hold and would just be exposed. True regardless of seat — in 2nd hand it is in
+     * fact exposed to two more players. Only the King is protected this way (a Queen sits
+     * under both A and K and rarely holds, so we don't go out of our way to preserve it).
+     */
     isVulnerableKingWinner(card, game) {
         if (!card || card.rankCode !== 'K') return false;
 
