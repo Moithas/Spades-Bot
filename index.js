@@ -23,6 +23,8 @@ import {
 
 // 3. Corrected local file import for ES Module syntax (must include .js extension)
 import GameManager from './game_logic/GameManager.js';
+import { buildGameComms } from './game_logic/gameComms.js';
+import { gameStateStore } from './stats/GameStateStore.js';
 import { renderHand, renderSingleCard, renderTrickCards, renderCardBacks } from './game_logic/CardRenderer.js';
 import { AttachmentBuilder } from 'discord.js'; 
 import { playerStats } from './stats/PlayerStats.js';
@@ -812,7 +814,70 @@ client.on('ready', async () => {
     } catch (error) {
         logger.error(error);
     }
-    
+
+    // --- Restore in-progress games that were persisted before this restart ---
+    try {
+        const saved = gameStateStore.getAll();
+        const savedChannelIds = Object.keys(saved);
+        if (savedChannelIds.length > 0) {
+            logger.info(`♻️ Restoring ${savedChannelIds.length} saved game(s) from before restart...`);
+            const { SpectatorView } = await import('./game_logic/SpectatorView.js');
+            for (const channelId of savedChannelIds) {
+                try {
+                    if (activeGames.has(channelId)) continue; // already live
+                    const snap = saved[channelId];
+                    const { publicAnnounce, privatePrompt } = buildGameComms(client, channelId, { activeGames, retryDiscordCall });
+                    const game = GameManager.fromSnapshot(snap, { publicAnnounce, privatePrompt });
+
+                    const channel = await client.channels.fetch(channelId).catch(() => null);
+                    if (!channel) {
+                        logger.error(`♻️ Channel ${channelId} not found; dropping saved game.`);
+                        gameStateStore.remove(channelId);
+                        continue;
+                    }
+                    game.channel = channel;
+                    game.spectatorView = new SpectatorView(game, channel);
+                    activeGames.set(channelId, game);
+
+                    const current = game.players[game.currentPlayerIndex];
+                    const turnMention = current
+                        ? (current.isAI ? `**${current.username}**` : `<@${current.discordId}>`)
+                        : 'the next player';
+                    const phaseWord = game.state === 'BIDDING' ? 'bidding' : 'playing';
+                    try {
+                        await game.publicAnnounce({
+                            type: 'message',
+                            message: `♻️ **Game resumed after a bot restart.** It's ${turnMention}'s turn (${phaseWord}). Use the **🎴 View Hand** button to continue.`
+                        });
+                    } catch (e) {
+                        logger.error('♻️ Failed to post resume message:', e);
+                    }
+
+                    // Re-drive the current actor (timers/AI schedules aren't persisted).
+                    if (game.state === 'BIDDING') {
+                        try { game.sendBiddingUpdate(); } catch (e) { logger.error('♻️ resume sendBiddingUpdate failed:', e); }
+                        if (current && current.isAI) {
+                            setTimeout(() => { try { game.processAIBid(current); } catch (e) { logger.error('♻️ resume AI bid failed:', e); } }, 3000);
+                        }
+                    } else if (game.state === 'PLAYING') {
+                        if (current && current.isAI) {
+                            game.scheduleAILead(3000);
+                        } else if (current && !current.isAI) {
+                            game.startPlayTimer(current);
+                        }
+                    }
+
+                    logger.success(`♻️ Restored game in channel ${channelId} (state=${game.state}, hand=${game.currentRound}).`);
+                } catch (err) {
+                    logger.error(`❌ Failed to restore game ${channelId}:`, err);
+                    try { gameStateStore.remove(channelId); } catch (e) { /* ignore */ }
+                }
+            }
+        }
+    } catch (err) {
+        logger.error('❌ Game restore routine failed:', err);
+    }
+
     // Start cleanup interval for ended games
     setInterval(() => {
         const now = Date.now();
@@ -825,6 +890,7 @@ client.on('ready', async () => {
                 const timeSinceEnd = now - game.endedAt;
                 if (timeSinceEnd > CLEANUP_DELAY) {
                     activeGames.delete(channelId);
+                    try { gameStateStore.remove(channelId); } catch (e) { /* ignore */ }
                     cleanedCount++;
                     logger.info(`🧹 Cleaned up ended game in channel ${channelId} (ended ${Math.floor(timeSinceEnd / 60000)} minutes ago)`);
                 }

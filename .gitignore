@@ -11,6 +11,9 @@ stats/aiHardTelemetry.json
 stats/aiLearningProfile.json
 stats/humanPlayData.json
 
+# Persisted in-progress games (restart recovery)
+stats/activeGames.json
+
 # Benchmark output artifacts
 stats/benchmark_*.json
 

@@ -12,6 +12,7 @@ import { aiLearning } from '../stats/AILearning.js';
 import { aiHardTelemetryStore } from '../stats/AIHardTelemetry.js';
 import { gameTelemetryStore } from '../stats/GameTelemetry.js';
 import { playDataStore } from '../stats/PlayDataStore.js';
+import { gameStateStore } from '../stats/GameStateStore.js';
 import { trashTalk } from './TrashTalk.js';
 
 /**
@@ -93,6 +94,209 @@ export default class GameManager {
             this.telemetryGameId = `${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
             this.hardSetPressureGameTotals = {};
         }
+
+    // ---------------------------------------------------------------------------
+    // Persistence: serialize/deserialize a live game so it survives process restarts.
+    // Non-serializable pieces (Discord comms closures, spectatorView, timers, AI locks)
+    // are deliberately NOT saved — they are re-attached by fromSnapshot()/the boot loader.
+    // ---------------------------------------------------------------------------
+
+    static SNAPSHOT_VERSION = 1;
+
+    /** Serialize a Card-like object to minimal JSON. */
+    static _cardToJSON(card) {
+        return card ? { rankCode: card.rankCode, suitCode: card.suitCode } : null;
+    }
+
+    /** Serialize one Player/AIPlayer to plain JSON. */
+    static _playerToSnapshot(p) {
+        const base = {
+            isAI: !!p.isAI,
+            discordId: p.discordId,
+            id: p.id,
+            username: p.username,
+            team: p.team,
+            bid: p.bid,
+            isNil: p.isNil,
+            isBlindNil: p.isBlindNil,
+            tricks: p.tricks,
+            score: p.score,
+            bags: p.bags,
+            declinedBlindNil: p.declinedBlindNil || false,
+            blindNilEligible: p.blindNilEligible || false,
+            preferences: p.preferences || null,
+            hand: (p.hand || []).map(c => GameManager._cardToJSON(c)),
+        };
+        if (!p.isAI) return base;
+        return {
+            ...base,
+            aiLevel: p.aiLevel,
+            aggressiveness: p.aggressiveness,
+            riskAversion: p.riskAversion,
+            monteCarloTrials: p.monteCarloTrials,
+            nilBidThreshold: p.nilBidThreshold,
+            bidAdjustment: p.bidAdjustment,
+            vulnerableKingHoldThreshold: p.vulnerableKingHoldThreshold,
+            aiPersonality: p.aiPersonality,
+            trashTalkEnabled: p.trashTalkEnabled,
+            trashTalkFrequency: p.trashTalkFrequency,
+            playedCards: Array.isArray(p.playedCards)
+                ? p.playedCards.map(c => ({ rankCode: c.rankCode, suitCode: c.suitCode, value: c.value, playedBy: c.playedBy ?? null }))
+                : [],
+            opponentProfiles: p.opponentProfiles instanceof Map ? Array.from(p.opponentProfiles.entries()) : [],
+        };
+    }
+
+    /** Rebuild a Player/AIPlayer from its snapshot. */
+    static _playerFromSnapshot(ps) {
+        let p;
+        if (ps.isAI) {
+            p = new AIPlayer(ps.discordId, ps.username);
+            p.aiLevel = ps.aiLevel ?? 'medium';
+            if (typeof ps.aggressiveness === 'number') p.aggressiveness = ps.aggressiveness;
+            if (typeof ps.riskAversion === 'number') p.riskAversion = ps.riskAversion;
+            if (typeof ps.monteCarloTrials === 'number') p.monteCarloTrials = ps.monteCarloTrials;
+            if (typeof ps.nilBidThreshold === 'number') p.nilBidThreshold = ps.nilBidThreshold;
+            if (typeof ps.bidAdjustment === 'number') p.bidAdjustment = ps.bidAdjustment;
+            if (typeof ps.vulnerableKingHoldThreshold === 'number') p.vulnerableKingHoldThreshold = ps.vulnerableKingHoldThreshold;
+            if (ps.aiPersonality) p.aiPersonality = ps.aiPersonality;
+            if (typeof ps.trashTalkEnabled === 'boolean') p.trashTalkEnabled = ps.trashTalkEnabled;
+            if (ps.trashTalkFrequency) p.trashTalkFrequency = ps.trashTalkFrequency;
+            p.playedCards = Array.isArray(ps.playedCards) ? ps.playedCards.map(c => ({ ...c })) : [];
+            p.opponentProfiles = new Map(Array.isArray(ps.opponentProfiles) ? ps.opponentProfiles : []);
+        } else {
+            p = new Player(ps.discordId, ps.username, ps.preferences || undefined);
+        }
+        p.id = ps.id ?? ps.discordId;
+        p.isAI = !!ps.isAI;
+        p.username = ps.username;
+        p.team = ps.team ?? null;
+        p.bid = ps.bid ?? null;
+        p.isNil = !!ps.isNil;
+        p.isBlindNil = !!ps.isBlindNil;
+        p.tricks = ps.tricks ?? 0;
+        p.score = ps.score ?? 0;
+        p.bags = ps.bags ?? 0;
+        p.declinedBlindNil = !!ps.declinedBlindNil;
+        p.blindNilEligible = !!ps.blindNilEligible;
+        if (ps.preferences) p.preferences = ps.preferences;
+        p.hand = (ps.hand || []).map(c => new Card(c.rankCode, c.suitCode));
+        return p;
+    }
+
+    /**
+     * Serialize the full live game state to a plain JSON-safe object. Excludes Discord
+     * comms closures, spectatorView, timers, and AI reentrancy locks (re-attached on load).
+     */
+    toSnapshot() {
+        return {
+            version: GameManager.SNAPSHOT_VERSION,
+            savedAt: new Date().toISOString(),
+            channelId: this.channelId || null,
+            guildId: this.guildId || null,
+            gameMode: this.gameMode,
+            state: this.state,
+            hostId: this.hostId,
+            isGameActive: this.isGameActive,
+            isBiddingActive: this.isBiddingActive,
+            isTrickActive: this.isTrickActive,
+            currentPlayerIndex: this.currentPlayerIndex,
+            dealerIndex: this.dealerIndex,
+            currentRound: this.currentRound,
+            bidsTaken: this.bidsTaken,
+            trumpSuit: this.trumpSuit,
+            trickSuit: this.trickSuit,
+            spadesBroken: this.spadesBroken,
+            options: this.options,
+            spectators: this.spectators,
+            telemetryGameId: this.telemetryGameId,
+            hardSetPressureGameTotals: this.hardSetPressureGameTotals || {},
+            playerStatTracking: this.playerStatTracking || {},
+            handObservations: this.handObservations || {},
+            biddingMessageId: this.biddingMessageId,
+            currentTrickMessageId: this.currentTrickMessageId,
+            currentTrickWinnerMessageId: this.currentTrickWinnerMessageId,
+            previousTrickCardsMessageId: this.previousTrickCardsMessageId,
+            players: this.players.map(p => GameManager._playerToSnapshot(p)),
+            trick: (this.trick || []).map(t => ({
+                playerId: t.player?.id ?? null,
+                card: GameManager._cardToJSON(t.card),
+            })),
+            trickHistory: this.trickHistory || [],
+        };
+    }
+
+    /**
+     * Rebuild a GameManager from a snapshot, re-attaching the provided Discord comms.
+     * spectatorView and timers are NOT restored here (the boot loader handles those).
+     */
+    static fromSnapshot(snap, { publicAnnounce, privatePrompt } = {}) {
+        const targetScore = snap.options?.targetScore ?? 500;
+        const gm = new GameManager(publicAnnounce, privatePrompt, targetScore, snap.gameMode || 'classic');
+
+        gm.channelId = snap.channelId || null;
+        gm.guildId = snap.guildId || null;
+        gm.state = snap.state;
+        gm.hostId = snap.hostId ?? null;
+        gm.isGameActive = !!snap.isGameActive;
+        gm.isBiddingActive = !!snap.isBiddingActive;
+        gm.isTrickActive = !!snap.isTrickActive;
+        gm.currentPlayerIndex = snap.currentPlayerIndex ?? 0;
+        gm.dealerIndex = snap.dealerIndex ?? 0;
+        gm.currentRound = snap.currentRound ?? 1;
+        gm.bidsTaken = snap.bidsTaken ?? 0;
+        gm.trumpSuit = snap.trumpSuit ?? null;
+        gm.trickSuit = snap.trickSuit ?? null;
+        gm.spadesBroken = !!snap.spadesBroken;
+        if (snap.options) gm.options = { ...gm.options, ...snap.options };
+        gm.spectators = Array.isArray(snap.spectators) ? snap.spectators : [];
+        if (snap.telemetryGameId) gm.telemetryGameId = snap.telemetryGameId;
+        gm.hardSetPressureGameTotals = snap.hardSetPressureGameTotals || {};
+        gm.playerStatTracking = snap.playerStatTracking || {};
+        gm.handObservations = snap.handObservations || {};
+        gm.biddingMessageId = snap.biddingMessageId ?? null;
+        gm.currentTrickMessageId = snap.currentTrickMessageId ?? null;
+        gm.currentTrickWinnerMessageId = snap.currentTrickWinnerMessageId ?? null;
+        gm.previousTrickCardsMessageId = snap.previousTrickCardsMessageId ?? null;
+
+        gm.players = (snap.players || []).map(ps => GameManager._playerFromSnapshot(ps));
+        const byId = new Map(gm.players.map(p => [p.id, p]));
+        gm.trick = (snap.trick || [])
+            .map(t => ({
+                player: byId.get(t.playerId) || null,
+                card: t.card ? new Card(t.card.rankCode, t.card.suitCode) : null,
+            }))
+            .filter(t => t.player && t.card);
+        gm.trickHistory = Array.isArray(snap.trickHistory) ? snap.trickHistory : [];
+
+        return gm;
+    }
+
+    /**
+     * Persist this game's current state for restart recovery, or clear it if the game is no
+     * longer in a resumable phase. No-ops for self-play/benchmark games (no channelId).
+     */
+    persistState() {
+        try {
+            if (!this.channelId) return; // benchmark / self-play games are not persisted
+            if (this.state === 'BIDDING' || this.state === 'PLAYING') {
+                gameStateStore.put(this.channelId, this.toSnapshot());
+            } else {
+                gameStateStore.remove(this.channelId);
+            }
+        } catch (e) {
+            logger.error('Failed to persist game state:', e);
+        }
+    }
+
+    /** Explicitly drop this game's persisted snapshot (e.g. on game over / cleanup). */
+    clearPersistedState() {
+        try {
+            if (this.channelId) gameStateStore.remove(this.channelId);
+        } catch (e) {
+            logger.error('Failed to clear persisted game state:', e);
+        }
+    }
 
     /**
      * Adds a spectator to the game if not already present.
@@ -1403,6 +1607,9 @@ export default class GameManager {
         // Check Blind Nil eligibility (team must be significantly behind)
         this.checkBlindNilEligibility();
 
+        // Persist the freshly-dealt bidding state for restart recovery.
+        this.persistState();
+
         // Send initial bidding embed
         this.sendBiddingUpdate();
 
@@ -1614,6 +1821,9 @@ export default class GameManager {
             }, TIMING.UNDO_BID_DELAY);
         }
 
+        // Persist the updated bidding state for restart recovery.
+        this.persistState();
+
         return {
             bidDisplay,
             error: null,
@@ -1704,6 +1914,9 @@ export default class GameManager {
         // Update the bidding embed
         this.sendBiddingUpdate();
 
+        // Persist the reverted bidding state for restart recovery.
+        this.persistState();
+
         return {
             success: true,
             oldBid: oldBid,
@@ -1739,6 +1952,9 @@ export default class GameManager {
             this.currentPlayerIndex = (this.dealerIndex + 1) % this.players.length;
         }
         logger.debug(`🏁 endBidding: set currentPlayerIndex=${this.currentPlayerIndex} (${this.players[this.currentPlayerIndex].username})`);
+
+        // Persist the transition into trick play for restart recovery.
+        this.persistState();
 
         // Send bidding complete summary with structured payload
         const firstPlayer = this.players[this.currentPlayerIndex];
@@ -1929,6 +2145,8 @@ export default class GameManager {
                 p.playedCards.push({ rankCode: card.rankCode, suitCode: card.suitCode, value: card.value, playedBy });
             }
         });
+        // Persist after every card so a restart resumes mid-trick.
+        this.persistState();
     }
 
     /**
@@ -2095,6 +2313,8 @@ export default class GameManager {
             } else {
                 logger.debug(`👤 Next trick leader ${nextPlayer.username} is human or game not in PLAYING state`);
             }
+            // Persist the post-trick state (trick reset, new leader) for restart recovery.
+            this.persistState();
         }
     }
 
@@ -2739,6 +2959,9 @@ export default class GameManager {
         this.isGameActive = false;
         this.state = 'ENDED';
         this.endedAt = Date.now(); // Track when game ended for cleanup
+
+        // Game is over — drop any persisted snapshot so it isn't resumed on next boot.
+        this.clearPersistedState();
         
         // --- OPPONENT MODELING: Mark game as complete in observations ---
         for (const player of this.players) {
