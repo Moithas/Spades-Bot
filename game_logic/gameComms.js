@@ -258,6 +258,13 @@ export function buildGameComms(client, channelId, { activeGames, retryDiscordCal
                         .setDescription(`**${payload.playerName}** wins the trick with **${winningCardDisplay}**!`)
                         .addFields({ name: 'Tricks Won', value: `**${payload.playerName}** now has **${payload.tricks}** trick${payload.tricks !== 1 ? 's' : ''}`, inline: false });
 
+                    if (payload.leadsNext && payload.playerName) {
+                        const leaderMention = payload.isWinnerAI
+                            ? `**${payload.playerName}**`
+                            : (payload.playerId ? `<@${payload.playerId}>` : `**${payload.playerName}**`);
+                        embed.addFields({ name: '🎴 Up Next', value: `${leaderMention} leads the next trick.`, inline: false });
+                    }
+
                     const sentMessage = await retryDiscordCall(() => channel.send({ embeds: [embed] }));
 
                     const game = activeGames.get(channel.id);

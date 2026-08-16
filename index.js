@@ -1148,7 +1148,7 @@ client.on('interactionCreate', async interaction => {
             // Temporarily add to trick to calculate next player
             const tempTrick = [...game.trick, { player, card: cardToPlay }];
             
-            if (tempTrick.length < 4) {
+            if (tempTrick.length < game.getMaxPlayers()) {
                 const nextPlayerIndex = (game.currentPlayerIndex + 1) % game.players.length;
                 const nextPlayer = game.players[nextPlayerIndex];
                 nextPlayerName = nextPlayer.username;
@@ -1624,6 +1624,13 @@ client.on('interactionCreate', async interaction => {
                                 .setTitle('🏆 Trick Complete!')
                                 .setDescription(`**${payload.playerName}** wins the trick with **${winningCardDisplay}**!`)
                                 .addFields({ name: 'Tricks Won', value: `**${payload.playerName}** now has **${payload.tricks}** trick${payload.tricks !== 1 ? 's' : ''}`, inline: false });
+
+                            if (payload.leadsNext && payload.playerName) {
+                                const leaderMention = payload.isWinnerAI
+                                    ? `**${payload.playerName}**`
+                                    : (payload.playerId ? `<@${payload.playerId}>` : `**${payload.playerName}**`);
+                                embed.addFields({ name: '🎴 Up Next', value: `${leaderMention} leads the next trick.`, inline: false });
+                            }
 
                             const sentMessage = await retryDiscordCall(() => channel.send({ embeds: [embed] }));
                             
@@ -4168,6 +4175,13 @@ client.on('interactionCreate', async interaction => {
                                 .setTitle('🏆 Trick Complete!')
                                 .setDescription(`**${payload.playerName}** wins the trick with **${winningCardDisplay}**!`)
                                 .addFields({ name: 'Tricks Won', value: `**${payload.playerName}** now has **${payload.tricks}** trick${payload.tricks !== 1 ? 's' : ''}`, inline: false });
+
+                            if (payload.leadsNext && payload.playerName) {
+                                const leaderMention = payload.isWinnerAI
+                                    ? `**${payload.playerName}**`
+                                    : (payload.playerId ? `<@${payload.playerId}>` : `**${payload.playerName}**`);
+                                embed.addFields({ name: '🎴 Up Next', value: `${leaderMention} leads the next trick.`, inline: false });
+                            }
 
                             // DON'T delete the trick cards - let them stay visible alongside winner message
                             

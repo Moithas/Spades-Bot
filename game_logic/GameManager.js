@@ -2216,9 +2216,16 @@ export default class GameManager {
 
         // Announce trick won with structured payload so the front-end can render images
         try {
+            // The trick winner leads the next trick (unless this was the final trick of the
+            // round). Pass that through so the embed can name the next leader instead of the
+            // display looking like play just continued clockwise.
+            const roundOver = this.players.every(p => p.hand.length === 0);
             await this.publicAnnounce({
                 type: 'trick_won',
                 playerName: winningPlayer.username,
+                playerId: winningPlayer.discordId,
+                isWinnerAI: winningPlayer.isAI,
+                leadsNext: !roundOver,
                 card: { rankCode: winningCard.rankCode, suitCode: winningCard.suitCode, value: winningCard.value },
                 tricks: winningPlayer.tricks,
                 messageId: this.currentTrickMessageId // Pass the message ID to update the same embed
