@@ -8,6 +8,7 @@
 // channel (when thread creation isn't available); we must never delete one of those.
 
 import logger from '../logger.js';
+import { PermissionsBitField } from 'discord.js';
 import { getGuildSettings } from '../guildSettings.js';
 
 /**
@@ -25,6 +26,37 @@ export async function scheduleThreadCleanup(channel) {
         const minutes = Number(settings.autoDeleteThreadMinutes);
         const mins = Number.isFinite(minutes) && minutes > 0 ? minutes : 3;
         const delayMs = mins * 60 * 1000;
+
+        // Can the bot actually delete this thread? Deleting requires Manage Threads.
+        let canDelete = false;
+        try {
+            let me = channel.guild?.members?.me;
+            if (!me && channel.guild?.members?.fetchMe) {
+                me = await channel.guild.members.fetchMe();
+            }
+            if (me && typeof channel.permissionsFor === 'function') {
+                const perms = channel.permissionsFor(me);
+                canDelete = !!perms && perms.has(PermissionsBitField.Flags.ManageThreads);
+            }
+        } catch (e) {
+            logger.debug('🧵 Could not resolve bot thread permissions:', e?.message);
+        }
+
+        // Missing permission → don't make a promise we can't keep. Instead, surface the
+        // feature so admins can discover it and grant the permission (or disable it).
+        if (!canDelete) {
+            try {
+                await channel.send(
+                    `🧵 **Tidy-up tip:** I can automatically delete finished game threads (after **${mins} min**) to keep this server clean — ` +
+                    `but I need the **Manage Threads** permission, which I don't have here yet.\n` +
+                    `A server admin can grant it, then this thread (and future finished games) will clean themselves up. ` +
+                    `Admins can adjust or turn this off with \`/spades autodelete\`.`
+                );
+            } catch (e) {
+                logger.debug('🧵 Could not post permission-discovery notice:', e?.message);
+            }
+            return;
+        }
 
         try {
             await channel.send(
