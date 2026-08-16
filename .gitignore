@@ -17,6 +17,9 @@ stats/activeGames.json
 # Per-guild settings (runtime)
 guildSettings.json
 
+# Global bot-owner settings (runtime)
+botSettings.json
+
 # Benchmark output artifacts
 stats/benchmark_*.json
 

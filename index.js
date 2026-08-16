@@ -27,6 +27,7 @@ import { buildGameComms } from './game_logic/gameComms.js';
 import { gameStateStore } from './stats/GameStateStore.js';
 import { scheduleThreadCleanup } from './game_logic/threadCleanup.js';
 import { getGuildSettings, updateGuildSettings } from './guildSettings.js';
+import { getBotSettings, updateBotSettings, postBotAnnouncement } from './botSettings.js';
 import { renderHand, renderSingleCard, renderTrickCards, renderCardBacks } from './game_logic/CardRenderer.js';
 import { AttachmentBuilder } from 'discord.js'; 
 import { playerStats } from './stats/PlayerStats.js';
@@ -95,6 +96,29 @@ async function retryDiscordCall(fn, maxRetries = DISCORD.MAX_RETRIES, delay = DI
             // If not a timeout error, or we've exhausted retries, throw the error
             throw error;
         }
+    }
+}
+
+/**
+ * Whether a user is the bot owner (the Discord application owner, or a member of the owning
+ * team). Used to gate global owner-only settings like game announcements.
+ * @param {string} userId
+ * @returns {Promise<boolean>}
+ */
+async function isBotOwner(userId) {
+    try {
+        if (!client.application?.owner) {
+            await client.application?.fetch();
+        }
+        const owner = client.application?.owner;
+        if (!owner) return false;
+        if (owner.members && typeof owner.members.has === 'function') {
+            return owner.members.has(userId); // owning team
+        }
+        return owner.id === userId;
+    } catch (e) {
+        logger.error('Failed to resolve bot owner:', e);
+        return false;
     }
 }
 
@@ -762,6 +786,24 @@ const commands = [
                        .setRequired(false)
                        .setMinValue(0)
                        .setMaxValue(60)
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand.setName('announce')
+                .setDescription('Bot owner: set a global message shown when games start/finish.')
+                .addStringOption(opt =>
+                    opt.setName('slot')
+                       .setDescription('Which announcement to set (omit to view current).')
+                       .setRequired(false)
+                       .addChoices(
+                           { name: 'Game Start', value: 'start' },
+                           { name: 'Game Finish', value: 'end' }
+                       )
+                )
+                .addStringOption(opt =>
+                    opt.setName('message')
+                       .setDescription('Message text (omit to clear the slot). Use <@USER_ID> for a clickable mention.')
+                       .setRequired(false)
                 )
         ),
 ].map(command => command.toJSON());
@@ -1852,6 +1894,7 @@ client.on('interactionCreate', async interaction => {
                             
                             activeGames.delete(payload.channelId);
                             await channel.send(`🎉 **GAME OVER!** 🎉\n**Winner:** ${payload.message}`);
+                            await postBotAnnouncement(channel, 'end');
                             scheduleThreadCleanup(channel);
                         } catch (err) {
                             logger.error('❌ Failed to handle game over:', err);
@@ -2576,6 +2619,9 @@ client.on('interactionCreate', async interaction => {
             // Send DMs and start bidding sequence
             const channel = interaction.channel;
             await sendHandsAndBiddingButtons(game, channel, gameChannelId);
+
+            // Global owner announcement (if configured) shown as the game begins.
+            await postBotAnnouncement(channel, 'start');
 
             // Final update to remove buttons after starting
             const startEmbed = new EmbedBuilder()
@@ -4558,6 +4604,7 @@ client.on('interactionCreate', async interaction => {
                             
                             activeGames.delete(payload.channelId);
                             await channel.send(`🎉 **GAME OVER!** 🎉\n**Winner:** ${payload.message}`);
+                            await postBotAnnouncement(channel, 'end');
                             scheduleThreadCleanup(channel);
                         } catch (err) {
                             logger.error('❌ Failed to handle game over:', err);
@@ -5704,6 +5751,52 @@ client.on('interactionCreate', async interaction => {
         // ----------------------------------------------------
         // Handle /spades premium command
         // ----------------------------------------------------
+        // ----------------------------------------------------
+        // /spades announce (bot owner: global game start/finish messages)
+        // ----------------------------------------------------
+        if (subcommand === 'announce') {
+            try {
+                const owner = await isBotOwner(interaction.user.id);
+                if (!owner) {
+                    return interaction.reply({ content: '🚫 Only the bot owner can set global announcements.', ephemeral: true });
+                }
+
+                const slot = interaction.options.getString('slot');
+                const message = interaction.options.getString('message');
+                const settings = await getBotSettings();
+
+                // No slot → show the current announcements.
+                if (!slot) {
+                    const startText = settings.startMessage ? `\`\`\`${settings.startMessage}\`\`\`` : '_(none)_';
+                    const endText = settings.endMessage ? `\`\`\`${settings.endMessage}\`\`\`` : '_(none)_';
+                    return interaction.reply({
+                        content: `📣 **Global game announcements**\n\n**On game start:**\n${startText}\n**On game finish:**\n${endText}\n\nSet: \`/spades announce slot:<Game Start|Game Finish> message:<text>\` — omit **message** to clear that slot.`,
+                        ephemeral: true
+                    });
+                }
+
+                const key = slot === 'start' ? 'startMessage' : 'endMessage';
+                const label = slot === 'start' ? 'game start' : 'game finish';
+
+                if (!message) {
+                    await updateBotSettings({ [key]: null });
+                    return interaction.reply({ content: `📣 Cleared the **${label}** announcement.`, ephemeral: true });
+                }
+
+                await updateBotSettings({ [key]: message });
+                return interaction.reply({
+                    content: `📣 Set the **${label}** announcement. Preview:\n\`\`\`${message}\`\`\``,
+                    ephemeral: true
+                });
+            } catch (error) {
+                logger.error('❌ Error in /spades announce command:', error);
+                if (!interaction.replied && !interaction.deferred) {
+                    return interaction.reply({ content: '❌ An error occurred while updating the announcement.', ephemeral: true });
+                }
+            }
+            return;
+        }
+
         // ----------------------------------------------------
         // /spades autodelete (guild admin: finished-thread auto-delete policy)
         // ----------------------------------------------------

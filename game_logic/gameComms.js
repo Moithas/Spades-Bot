@@ -19,6 +19,7 @@ import { renderTrickCards, renderCardBacks } from './CardRenderer.js';
 import logger, { safeDelete } from '../logger.js';
 import { playerStats } from '../stats/PlayerStats.js';
 import { scheduleThreadCleanup } from './threadCleanup.js';
+import { postBotAnnouncement } from '../botSettings.js';
 
 /**
  * @param {import('discord.js').Client} client - Logged-in Discord client.
@@ -415,6 +416,7 @@ export function buildGameComms(client, channelId, { activeGames, retryDiscordCal
 
                     activeGames.delete(payload.channelId);
                     await channel.send(`🎉 **GAME OVER!** 🎉\n**Winner:** ${payload.message}`);
+                    await postBotAnnouncement(channel, 'end');
                     scheduleThreadCleanup(channel);
                 } catch (err) {
                     logger.error('❌ Failed to handle game over:', err);
