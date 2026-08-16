@@ -779,6 +779,37 @@ client.on('entitlementDelete', (entitlement) => {
 // Map to store active games: key is channelId, value is GameManager instance.
 const activeGames = new Map();
 
+// --- Cleanup when a game's channel/thread is deleted ---
+// If a thread (or channel) hosting a game is deleted, the game is unrecoverable (there is
+// nowhere left to play). Drop it from memory and from the persisted store immediately so it
+// isn't orphaned in RAM or resurrected on the next restart. NOTE: this only fires on actual
+// deletion — idle games keep their thread and are intentionally retained for later resume.
+const removeGameForDeletedChannel = (channelId, kind) => {
+    try {
+        const game = activeGames.get(channelId);
+        if (game) {
+            // Clear any pending timers so no orphaned callbacks fire after the channel is gone.
+            try { game.cancelPlayTimer?.(); } catch (e) { /* ignore */ }
+            for (const key of ['biddingCompleteTimeout', 'aiPendingBidTimeout', '_aiScheduledTimeout', 'currentPlayTimer']) {
+                if (game[key]) { try { clearTimeout(game[key]); } catch (e) { /* ignore */ } game[key] = null; }
+            }
+            activeGames.delete(channelId);
+            logger.info(`🧹 Removed active game for deleted ${kind} ${channelId}`);
+        }
+        gameStateStore.remove(channelId);
+    } catch (err) {
+        logger.error(`❌ Failed to clean up game for deleted ${kind} ${channelId}:`, err);
+    }
+};
+
+client.on('threadDelete', (thread) => {
+    removeGameForDeletedChannel(thread.id, 'thread');
+});
+
+client.on('channelDelete', (channel) => {
+    removeGameForDeletedChannel(channel.id, 'channel');
+});
+
 // --- Error Handling ---
 client.on('error', error => {
     logger.error('❌ Discord client error:', error);
