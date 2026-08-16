@@ -805,6 +805,16 @@ const commands = [
                        .setDescription('Message text (omit to clear the slot). Use <@USER_ID> for a clickable mention.')
                        .setRequired(false)
                 )
+                .addStringOption(opt =>
+                    opt.setName('button_url')
+                       .setDescription('Optional link button URL (e.g. your community invite https://discord.gg/...).')
+                       .setRequired(false)
+                )
+                .addStringOption(opt =>
+                    opt.setName('button_label')
+                       .setDescription('Optional link button label (default "Join"). Max 80 chars.')
+                       .setRequired(false)
+                )
         ),
 ].map(command => command.toJSON());
 
@@ -5763,29 +5773,57 @@ client.on('interactionCreate', async interaction => {
 
                 const slot = interaction.options.getString('slot');
                 const message = interaction.options.getString('message');
+                const buttonUrl = interaction.options.getString('button_url');
+                const buttonLabel = interaction.options.getString('button_label');
                 const settings = await getBotSettings();
+
+                const describeSlot = (msg, label, url) => {
+                    const m = msg ? `\`\`\`${msg}\`\`\`` : '_(no message)_';
+                    const b = url ? `\n🔘 Button: **${label || 'Join'}** → <${url}>` : '';
+                    return `${m}${b}`;
+                };
 
                 // No slot → show the current announcements.
                 if (!slot) {
-                    const startText = settings.startMessage ? `\`\`\`${settings.startMessage}\`\`\`` : '_(none)_';
-                    const endText = settings.endMessage ? `\`\`\`${settings.endMessage}\`\`\`` : '_(none)_';
+                    const startText = describeSlot(settings.startMessage, settings.startButtonLabel, settings.startButtonUrl);
+                    const endText = describeSlot(settings.endMessage, settings.endButtonLabel, settings.endButtonUrl);
+                    const anyStart = settings.startMessage || settings.startButtonUrl;
+                    const anyEnd = settings.endMessage || settings.endButtonUrl;
                     return interaction.reply({
-                        content: `📣 **Global game announcements**\n\n**On game start:**\n${startText}\n**On game finish:**\n${endText}\n\nSet: \`/spades announce slot:<Game Start|Game Finish> message:<text>\` — omit **message** to clear that slot.`,
+                        content: `📣 **Global game announcements**\n\n**On game start:**\n${anyStart ? startText : '_(none)_'}\n\n**On game finish:**\n${anyEnd ? endText : '_(none)_'}\n\nSet: \`/spades announce slot:<Game Start|Game Finish> message:<text> [button_url] [button_label]\` — omit **message** and **button_url** to clear the slot.`,
                         ephemeral: true
                     });
                 }
 
-                const key = slot === 'start' ? 'startMessage' : 'endMessage';
+                const prefix = slot === 'start' ? 'start' : 'end';
                 const label = slot === 'start' ? 'game start' : 'game finish';
 
-                if (!message) {
-                    await updateBotSettings({ [key]: null });
+                // Nothing provided for this slot → clear it entirely (message + button).
+                if (!message && !buttonUrl) {
+                    await updateBotSettings({
+                        [`${prefix}Message`]: null,
+                        [`${prefix}ButtonUrl`]: null,
+                        [`${prefix}ButtonLabel`]: null,
+                    });
                     return interaction.reply({ content: `📣 Cleared the **${label}** announcement.`, ephemeral: true });
                 }
 
-                await updateBotSettings({ [key]: message });
+                // Validate the button URL (Discord link buttons require a real http(s) URL).
+                if (buttonUrl && !/^https?:\/\//i.test(buttonUrl)) {
+                    return interaction.reply({
+                        content: '❌ `button_url` must start with `http://` or `https://` (e.g. `https://discord.gg/yourInvite`).',
+                        ephemeral: true
+                    });
+                }
+
+                await updateBotSettings({
+                    [`${prefix}Message`]: message || null,
+                    [`${prefix}ButtonUrl`]: buttonUrl || null,
+                    [`${prefix}ButtonLabel`]: buttonUrl ? (buttonLabel || 'Join') : null,
+                });
+
                 return interaction.reply({
-                    content: `📣 Set the **${label}** announcement. Preview:\n\`\`\`${message}\`\`\``,
+                    content: `📣 Updated the **${label}** announcement.\n${describeSlot(message || null, buttonLabel, buttonUrl || null)}`,
                     ephemeral: true
                 });
             } catch (error) {
