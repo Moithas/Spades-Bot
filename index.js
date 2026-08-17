@@ -455,6 +455,13 @@ const createSettingsComponents = (gameChannelId, game) => {
                         value: 'christmas',
                         emoji: '🎄',
                         default: game.options.deckTheme === 'christmas'
+                    },
+                    {
+                        label: '⭐ Alien',
+                        description: 'Premium - Sci-fi alien artwork deck',
+                        value: 'alien',
+                        emoji: '👽',
+                        default: game.options.deckTheme === 'alien'
                     }
                 ])
         );
@@ -2800,6 +2807,13 @@ client.on('interactionCreate', async interaction => {
                                 value: 'christmas',
                                 emoji: '🎄',
                                 default: game.options.deckTheme === 'christmas'
+                            },
+                            {
+                                label: '⭐ Alien',
+                                description: 'Premium - Sci-fi alien artwork deck',
+                                value: 'alien',
+                                emoji: '👽',
+                                default: game.options.deckTheme === 'alien'
                             }
                         ])
                 );

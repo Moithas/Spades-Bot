@@ -40,7 +40,8 @@ const THEME_SKUS = {
     holographic: process.env.THEME_HOLOGRAPHIC_SKU_ID || 'YOUR_HOLOGRAPHIC_SKU_HERE',
     cosmic: process.env.THEME_COSMIC_SKU_ID || 'YOUR_COSMIC_SKU_HERE',
     cyberpunk: process.env.THEME_CYBERPUNK_SKU_ID || 'YOUR_CYBERPUNK_SKU_HERE',
-    christmas: process.env.THEME_CHRISTMAS_SKU_ID || 'YOUR_CHRISTMAS_SKU_HERE'
+    christmas: process.env.THEME_CHRISTMAS_SKU_ID || 'YOUR_CHRISTMAS_SKU_HERE',
+    alien: process.env.THEME_ALIEN_SKU_ID || 'YOUR_ALIEN_SKU_HERE'
 };
 
 // All premium-related SKUs for fetching entitlements
@@ -63,7 +64,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Deck themes - FREE themes available to all, others purchasable individually
 const FREE_THEMES = ['classic', 'minimalist', 'neon'];
-const PURCHASABLE_THEMES = ['steampunk', 'medieval', 'holographic', 'cosmic', 'cyberpunk', 'christmas'];
+const PURCHASABLE_THEMES = ['steampunk', 'medieval', 'holographic', 'cosmic', 'cyberpunk', 'christmas', 'alien'];
 
 // Card back themes - requires premium subscription
 const FREE_CARD_BACKS = ['blue'];

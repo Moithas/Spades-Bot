@@ -20,6 +20,10 @@ guildSettings.json
 # Global bot-owner settings (runtime)
 botSettings.json
 
+# Deck-theme source sheets (large) + render previews; sliced cards + back are committed
+assets/themes/*/sheet.png
+assets/themes/*/_*.png
+
 # Benchmark output artifacts
 stats/benchmark_*.json
 

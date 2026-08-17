@@ -1,6 +1,113 @@
 // game_logic/CardRenderer.js
 
-import { createCanvas, loadImage } from 'canvas';
+import { createCanvas, loadImage, Image } from 'canvas';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// --- Image-based (artwork) deck themes ---------------------------------------------------
+// Some premium decks are full artwork (52 sliced card PNGs + a back image) rather than
+// procedurally drawn. Their faces are preloaded once (synchronous decode) at module load and
+// drawn at their native aspect ratio in the hand / trick / single-card renderers.
+const __cardRendererDir = path.dirname(fileURLToPath(import.meta.url));
+const THEMES_ASSET_ROOT = path.join(__cardRendererDir, '..', 'assets', 'themes');
+const IMAGE_THEME_CONFIG = {
+    alien: { dir: 'Alien' },
+};
+const IMAGE_THEMES = new Set(Object.keys(IMAGE_THEME_CONFIG));
+const _imageRanks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K'];
+const _imageSuits = ['S', 'H', 'D', 'C'];
+const _imageThemeFaces = new Map(); // theme -> Map<code, Image>
+const _imageThemeBacks = new Map(); // theme -> Image
+
+function _loadImageSync(p) {
+    try {
+        const img = new Image();
+        img.src = fs.readFileSync(p);
+        return img;
+    } catch (e) {
+        return null;
+    }
+}
+
+function _preloadImageThemes() {
+    for (const [theme, cfg] of Object.entries(IMAGE_THEME_CONFIG)) {
+        try {
+            const cardsDir = path.join(THEMES_ASSET_ROOT, cfg.dir, 'cards');
+            const faces = new Map();
+            for (const s of _imageSuits) {
+                for (const r of _imageRanks) {
+                    const code = r + s;
+                    const img = _loadImageSync(path.join(cardsDir, `${code}.png`));
+                    if (img) faces.set(code, img);
+                }
+            }
+            _imageThemeFaces.set(theme, faces);
+            const back = _loadImageSync(path.join(THEMES_ASSET_ROOT, cfg.dir, 'back.png'));
+            if (back) _imageThemeBacks.set(theme, back);
+        } catch (e) {
+            // Missing assets → theme silently falls back to procedural rendering.
+        }
+    }
+}
+_preloadImageThemes();
+
+/** True if `theme` is an artwork deck with its face images loaded. */
+export function isImageTheme(theme) {
+    return IMAGE_THEMES.has(theme) && _imageThemeFaces.has(theme) && _imageThemeFaces.get(theme).size > 0;
+}
+function _getImageFace(theme, rankCode, suitCode) {
+    const m = _imageThemeFaces.get(theme);
+    if (!m) return null;
+    return m.get(`${rankCode}${suitCode}`) || null;
+}
+function _imageThemeAspect(theme) {
+    const m = _imageThemeFaces.get(theme);
+    const first = m && m.values().next().value;
+    return first ? first.width / first.height : (102 / 143);
+}
+
+/** Compose an overlapped hand from an artwork theme's card images. */
+function _renderImageHand(sortedCards, deckTheme) {
+    const cardHeight = 143;
+    const aspect = _imageThemeAspect(deckTheme);
+    const cardWidth = Math.round(cardHeight * aspect);
+    const overlap = Math.round(cardWidth * 0.46);
+    const totalWidth = cardWidth + overlap * Math.max(0, sortedCards.length - 1);
+    const canvas = createCanvas(totalWidth, cardHeight);
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, totalWidth, cardHeight);
+    sortedCards.forEach((card, i) => {
+        const img = _getImageFace(deckTheme, card.rankCode, card.suitCode);
+        const x = i * overlap;
+        if (img) ctx.drawImage(img, x, 0, cardWidth, cardHeight);
+    });
+    return canvas.toBuffer('image/png');
+}
+
+/** Compose a side-by-side trick from an artwork theme's card images. */
+function _renderImageTrick(cards, deckTheme) {
+    const norm = cards.map(c => {
+        if (!c) return {};
+        if (c.rankCode || c.suitCode) return { rankCode: c.rankCode, suitCode: c.suitCode };
+        if (c.card) return { rankCode: c.card.rankCode, suitCode: c.card.suitCode };
+        return { rankCode: c.rank, suitCode: c.suit };
+    });
+    const cardHeight = 107;
+    const aspect = _imageThemeAspect(deckTheme);
+    const cardWidth = Math.round(cardHeight * aspect);
+    const spacing = 8;
+    const totalWidth = (cardWidth * norm.length) + spacing * Math.max(0, norm.length - 1);
+    const canvas = createCanvas(totalWidth, cardHeight);
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, totalWidth, cardHeight);
+    norm.forEach((card, i) => {
+        const img = _getImageFace(deckTheme, card.rankCode, card.suitCode);
+        const x = i * (cardWidth + spacing);
+        if (img) ctx.drawImage(img, x, 0, cardWidth, cardHeight);
+    });
+    return canvas.toBuffer('image/png');
+}
 
 /**
  * Deck theme definitions for custom card face styling
@@ -957,6 +1064,19 @@ export function renderCardBack(theme = 'blue') {
  * @returns {Buffer} PNG image buffer
  */
 export function renderCard(rankCode, suitCode, colorBlindMode = false, deckTheme = 'classic') {
+    // Artwork (image) decks: draw the preloaded card image at its native aspect.
+    if (isImageTheme(deckTheme)) {
+        const img = _getImageFace(deckTheme, rankCode, suitCode);
+        if (img) {
+            const cardHeight = 143;
+            const cardWidth = Math.round(cardHeight * (img.width / img.height));
+            const canvas = createCanvas(cardWidth, cardHeight);
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, cardWidth, cardHeight);
+            ctx.drawImage(img, 0, 0, cardWidth, cardHeight);
+            return canvas.toBuffer('image/png');
+        }
+    }
     const theme = DECK_THEMES[deckTheme] || DECK_THEMES.classic;
     const width = 102;
     const height = 143;
@@ -1460,6 +1580,11 @@ export function renderHand(cards, colorBlindMode = false, deckTheme = 'classic')
         }
         return b.value - a.value; // Higher cards first
     });
+
+    // Artwork (image) decks compose from preloaded card images at their native aspect.
+    if (isImageTheme(deckTheme)) {
+        return _renderImageHand(sortedCards, deckTheme);
+    }
 
     // Reduced card dimensions by 15%
     const cardWidth = 102; // Was 120
@@ -1977,6 +2102,11 @@ export function renderTrickCards(cards, deckTheme = 'classic') {
         ctx.textBaseline = 'middle';
         ctx.fillText('No cards played', 100, 25);
         return canvas.toBuffer('image/png');
+    }
+
+    // Artwork (image) decks compose from preloaded card images at their native aspect.
+    if (isImageTheme(deckTheme)) {
+        return _renderImageTrick(cards, deckTheme);
     }
 
     // Reduce card size by 25% from the standard size (102 * 0.75 = 76.5, 143 * 0.75 = 107.25)
