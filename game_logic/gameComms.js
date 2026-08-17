@@ -131,7 +131,7 @@ export function buildGameComms(client, channelId, { activeGames, retryDiscordCal
                             cardBackTheme = host.preferences.cardBackTheme;
                         }
                     }
-                    const cardBacksImage = renderCardBacks(cardsPerPlayer, cardBackTheme);
+                    const cardBacksImage = renderCardBacks(cardsPerPlayer, cardBackTheme, game?.options?.deckTheme);
                     const attachment = new AttachmentBuilder(cardBacksImage, { name: 'dealing.png' });
                     dealingEmbed.setImage('attachment://dealing.png');
 

@@ -2592,7 +2592,27 @@ function drawTrickCardOnCanvas(ctx, rankCode, suitCode, x, y, width, height, dec
  * @param {string} theme - Card back theme
  * @returns {Buffer} PNG image buffer
  */
-export function renderCardBacks(count, theme = 'blue') {
+/** Fan `count` copies of an artwork deck's back image. */
+function _renderImageBacks(count, deckTheme) {
+    const back = _imageThemeBacks.get(deckTheme);
+    const cardHeight = 143;
+    const cardWidth = Math.round(cardHeight * (back.width / back.height));
+    const overlap = Math.round(cardWidth * 0.46);
+    const totalWidth = cardWidth + overlap * Math.max(0, count - 1);
+    const canvas = createCanvas(totalWidth, cardHeight);
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, totalWidth, cardHeight);
+    for (let i = 0; i < count; i++) {
+        ctx.drawImage(back, i * overlap, 0, cardWidth, cardHeight);
+    }
+    return canvas.toBuffer('image/png');
+}
+
+export function renderCardBacks(count, theme = 'blue', deckTheme = null) {
+    // Artwork decks use their own back image (fanned) when one is loaded.
+    if (deckTheme && _imageThemeBacks.has(deckTheme)) {
+        return _renderImageBacks(count, deckTheme);
+    }
     const cardWidth = 102;
     const cardHeight = 143;
     const overlap = 34; // Same overlap as hand rendering

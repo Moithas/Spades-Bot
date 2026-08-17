@@ -1546,7 +1546,7 @@ client.on('interactionCreate', async interaction => {
                             } else {
                                 logger.debug(`🎴 No host found, using default card back theme: blue`);
                             }
-                            const cardBacksImage = renderCardBacks(cardsPerPlayer, cardBackTheme);
+                            const cardBacksImage = renderCardBacks(cardsPerPlayer, cardBackTheme, game?.options?.deckTheme);
                             const attachment = new AttachmentBuilder(cardBacksImage, { name: 'dealing.png' });
                             dealingEmbed.setImage('attachment://dealing.png');
 
@@ -2136,7 +2136,7 @@ client.on('interactionCreate', async interaction => {
                                     }
                                 }
                                 logger.error(`🎴 Player ${player.username} viewing Blind Nil with host's theme: ${cardBackTheme}`);
-                                const cardBacksBuffer = renderCardBacks(player.hand.length, cardBackTheme);
+                                const cardBacksBuffer = renderCardBacks(player.hand.length, cardBackTheme, game?.options?.deckTheme);
                                 handAttachment = new AttachmentBuilder(cardBacksBuffer, { name: 'hand_back.png' });
                                 logger.debug('✅ Card backs generated for Blind Nil decision');
                             } catch (err) {
@@ -4534,7 +4534,7 @@ client.on('interactionCreate', async interaction => {
                                     cardBackTheme = host.preferences.cardBackTheme;
                                 }
                             }
-                            const cardBacksImage = renderCardBacks(cardsPerPlayer, cardBackTheme);
+                            const cardBacksImage = renderCardBacks(cardsPerPlayer, cardBackTheme, game?.options?.deckTheme);
                             const attachment = new AttachmentBuilder(cardBacksImage, { name: 'dealing.png' });
                             dealingEmbed.setImage('attachment://dealing.png');
 
@@ -4821,7 +4821,7 @@ client.on('interactionCreate', async interaction => {
                                     }
                                 }
                                 logger.error(`🎴 [/hand] Using host's cardBackTheme: ${cardBackTheme}`);
-                                const cardBacksBuffer = renderCardBacks(player.hand.length, cardBackTheme);
+                                const cardBacksBuffer = renderCardBacks(player.hand.length, cardBackTheme, game?.options?.deckTheme);
                                 handAttachment = new AttachmentBuilder(cardBacksBuffer, { name: 'hand_back.png' });
                                 logger.debug('✅ Card backs generated for Blind Nil decision');
                             } catch (err) {
