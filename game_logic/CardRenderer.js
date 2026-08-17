@@ -88,20 +88,38 @@ function _drawRoundedImage(ctx, img, x, y, w, h, radius) {
 const IMAGE_HAND_HEIGHT = 170;
 const IMAGE_TRICK_HEIGHT = 140;
 
-/** Compose an overlapped hand from an artwork theme's card images. */
+/** Compose an overlapped hand from an artwork theme's card images. Large hands (e.g. the
+ *  17-card cutthroat hand) wrap into multiple rows so each card — and its baked rank/suit
+ *  pip — stays large enough to read instead of being crushed into one long strip. */
 function _renderImageHand(sortedCards, deckTheme) {
+    const n = sortedCards.length;
     const cardHeight = IMAGE_HAND_HEIGHT;
     const aspect = _imageThemeAspect(deckTheme);
     const cardWidth = Math.round(cardHeight * aspect);
-    const overlap = Math.round(cardWidth * 0.46);
-    const totalWidth = cardWidth + overlap * Math.max(0, sortedCards.length - 1);
-    const canvas = createCanvas(totalWidth, cardHeight);
+    const overlap = Math.round(cardWidth * 0.5);
+    const rowGap = 12;
+
+    // Split into balanced rows, at most ~9 cards per row.
+    const maxPerRow = 9;
+    const rows = Math.max(1, Math.ceil(n / maxPerRow));
+    const perRow = Math.ceil(n / rows);
+    const groups = [];
+    for (let i = 0; i < n; i += perRow) groups.push(sortedCards.slice(i, i + perRow));
+
+    const rowWidth = (g) => cardWidth + overlap * Math.max(0, g.length - 1);
+    const totalWidth = Math.max(cardWidth, ...groups.map(rowWidth));
+    const totalHeight = groups.length * cardHeight + rowGap * (groups.length - 1);
+
+    const canvas = createCanvas(totalWidth, totalHeight);
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, totalWidth, cardHeight);
-    sortedCards.forEach((card, i) => {
-        const img = _getImageFace(deckTheme, card.rankCode, card.suitCode);
-        const x = i * overlap;
-        if (img) _drawRoundedImage(ctx, img, x, 0, cardWidth, cardHeight);
+    ctx.clearRect(0, 0, totalWidth, totalHeight);
+    groups.forEach((g, ri) => {
+        const y = ri * (cardHeight + rowGap);
+        g.forEach((card, ci) => {
+            const img = _getImageFace(deckTheme, card.rankCode, card.suitCode);
+            const x = ci * overlap;
+            if (img) _drawRoundedImage(ctx, img, x, y, cardWidth, cardHeight);
+        });
     });
     return canvas.toBuffer('image/png');
 }
