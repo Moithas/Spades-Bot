@@ -67,9 +67,30 @@ function _imageThemeAspect(theme) {
     return first ? first.width / first.height : (102 / 143);
 }
 
+/** Draw an image clipped to a rounded rectangle (hides the art's square black corners). */
+function _drawRoundedImage(ctx, img, x, y, w, h, radius) {
+    const r = radius != null ? radius : Math.round(Math.min(w, h) * 0.09);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(img, x, y, w, h);
+    ctx.restore();
+}
+
+// Render sizes for artwork decks (larger than the 102x143 procedural cards so the baked
+// rank/suit pips stay readable).
+const IMAGE_HAND_HEIGHT = 170;
+const IMAGE_TRICK_HEIGHT = 140;
+
 /** Compose an overlapped hand from an artwork theme's card images. */
 function _renderImageHand(sortedCards, deckTheme) {
-    const cardHeight = 143;
+    const cardHeight = IMAGE_HAND_HEIGHT;
     const aspect = _imageThemeAspect(deckTheme);
     const cardWidth = Math.round(cardHeight * aspect);
     const overlap = Math.round(cardWidth * 0.46);
@@ -80,7 +101,7 @@ function _renderImageHand(sortedCards, deckTheme) {
     sortedCards.forEach((card, i) => {
         const img = _getImageFace(deckTheme, card.rankCode, card.suitCode);
         const x = i * overlap;
-        if (img) ctx.drawImage(img, x, 0, cardWidth, cardHeight);
+        if (img) _drawRoundedImage(ctx, img, x, 0, cardWidth, cardHeight);
     });
     return canvas.toBuffer('image/png');
 }
@@ -93,7 +114,7 @@ function _renderImageTrick(cards, deckTheme) {
         if (c.card) return { rankCode: c.card.rankCode, suitCode: c.card.suitCode };
         return { rankCode: c.rank, suitCode: c.suit };
     });
-    const cardHeight = 107;
+    const cardHeight = IMAGE_TRICK_HEIGHT;
     const aspect = _imageThemeAspect(deckTheme);
     const cardWidth = Math.round(cardHeight * aspect);
     const spacing = 8;
@@ -104,7 +125,7 @@ function _renderImageTrick(cards, deckTheme) {
     norm.forEach((card, i) => {
         const img = _getImageFace(deckTheme, card.rankCode, card.suitCode);
         const x = i * (cardWidth + spacing);
-        if (img) ctx.drawImage(img, x, 0, cardWidth, cardHeight);
+        if (img) _drawRoundedImage(ctx, img, x, 0, cardWidth, cardHeight);
     });
     return canvas.toBuffer('image/png');
 }
@@ -1068,12 +1089,12 @@ export function renderCard(rankCode, suitCode, colorBlindMode = false, deckTheme
     if (isImageTheme(deckTheme)) {
         const img = _getImageFace(deckTheme, rankCode, suitCode);
         if (img) {
-            const cardHeight = 143;
+            const cardHeight = IMAGE_HAND_HEIGHT;
             const cardWidth = Math.round(cardHeight * (img.width / img.height));
             const canvas = createCanvas(cardWidth, cardHeight);
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, cardWidth, cardHeight);
-            ctx.drawImage(img, 0, 0, cardWidth, cardHeight);
+            _drawRoundedImage(ctx, img, 0, 0, cardWidth, cardHeight);
             return canvas.toBuffer('image/png');
         }
     }
@@ -2595,7 +2616,7 @@ function drawTrickCardOnCanvas(ctx, rankCode, suitCode, x, y, width, height, dec
 /** Fan `count` copies of an artwork deck's back image. */
 function _renderImageBacks(count, deckTheme) {
     const back = _imageThemeBacks.get(deckTheme);
-    const cardHeight = 143;
+    const cardHeight = IMAGE_HAND_HEIGHT;
     const cardWidth = Math.round(cardHeight * (back.width / back.height));
     const overlap = Math.round(cardWidth * 0.46);
     const totalWidth = cardWidth + overlap * Math.max(0, count - 1);
@@ -2603,7 +2624,7 @@ function _renderImageBacks(count, deckTheme) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, totalWidth, cardHeight);
     for (let i = 0; i < count; i++) {
-        ctx.drawImage(back, i * overlap, 0, cardWidth, cardHeight);
+        _drawRoundedImage(ctx, back, i * overlap, 0, cardWidth, cardHeight);
     }
     return canvas.toBuffer('image/png');
 }
