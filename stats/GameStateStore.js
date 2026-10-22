@@ -2,9 +2,11 @@
 //
 // Persists in-progress games so they survive a process restart (deploys / crashes).
 // Live games otherwise exist only in the in-memory `activeGames` map in index.js, which a
-// `pm2 restart` wipes. This store keeps a channelId -> GameManager snapshot map in a single
-// JSON file. Writes are debounced (games mutate on every card). Snapshots are produced by
-// GameManager.toSnapshot() and rebuilt by GameManager.fromSnapshot() on boot.
+// `pm2 restart` wipes. This store keeps a channelId -> snapshot map in a single JSON file.
+// Values can be legacy raw Spades snapshots or wrapped objects:
+// { type: 'spades' | 'cribbage', snapshot: {...} }.
+// Writes are debounced (games mutate on every card). Snapshots are rebuilt on boot by the
+// corresponding manager's fromSnapshot() implementation.
 
 import fs from 'fs';
 import path from 'path';

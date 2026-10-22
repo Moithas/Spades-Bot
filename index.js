@@ -23,6 +23,8 @@ import {
 
 // 3. Corrected local file import for ES Module syntax (must include .js extension)
 import GameManager from './game_logic/GameManager.js';
+import CribbageManager from './game_logic/CribbageManager.js';
+import { renderCribbagePegboard } from './game_logic/CribbagePegboardRenderer.js';
 import { buildGameComms } from './game_logic/gameComms.js';
 import { gameStateStore } from './stats/GameStateStore.js';
 import { scheduleThreadCleanup } from './game_logic/threadCleanup.js';
@@ -823,6 +825,80 @@ const commands = [
                        .setRequired(false)
                 )
         ),
+    new SlashCommandBuilder()
+        .setName('cribbage')
+        .setDescription('Cribbage game commands.')
+        .addSubcommand(subcommand =>
+            subcommand.setName('start')
+                .setDescription('Start a new Cribbage lobby in this channel.')
+                .addStringOption(opt =>
+                    opt.setName('mode')
+                        .setDescription('Game mode')
+                        .setRequired(false)
+                        .addChoices(
+                            { name: 'Classic (2 Players)', value: 'classic2' },
+                            { name: 'Cutthroat (3 Players)', value: 'cutthroat3' },
+                            { name: 'Partners (4 Players, 2v2)', value: 'partners4' },
+                            { name: 'Individual (4 Players)', value: 'individual4' }
+                        )
+                )
+                .addIntegerOption(opt =>
+                    opt.setName('ai_players')
+                        .setDescription('How many AI players to add immediately.')
+                        .setRequired(false)
+                        .setMinValue(0)
+                        .setMaxValue(3)
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand.setName('join')
+                .setDescription('Join an open Cribbage lobby.')
+        )
+        .addSubcommand(subcommand =>
+            subcommand.setName('addai')
+                .setDescription('Host only: add AI players to an open Cribbage lobby.')
+                .addIntegerOption(opt =>
+                    opt.setName('count')
+                        .setDescription('How many AI players to add (default 1).')
+                        .setRequired(false)
+                        .setMinValue(1)
+                        .setMaxValue(3)
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand.setName('hand')
+                .setDescription('View your current Cribbage hand.')
+        )
+        .addSubcommand(subcommand =>
+            subcommand.setName('discard')
+                .setDescription('Discard to the crib (example: "5H KS" or "7C").')
+                .addStringOption(opt =>
+                    opt.setName('cards')
+                        .setDescription('Space/comma-separated cards to discard.')
+                        .setRequired(true)
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand.setName('play')
+                .setDescription('Play a card during pegging (example: "5H").')
+                .addStringOption(opt =>
+                    opt.setName('card')
+                        .setDescription('Card code to play.')
+                        .setRequired(true)
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand.setName('go')
+                .setDescription('Say "Go" during pegging when you cannot play.')
+        )
+        .addSubcommand(subcommand =>
+            subcommand.setName('status')
+                .setDescription('Show current Cribbage game status.')
+        )
+        .addSubcommand(subcommand =>
+            subcommand.setName('end')
+                .setDescription('Host only: end the active Cribbage game.')
+        ),
 ].map(command => command.toJSON());
 
 // --- Bot Setup ---
@@ -850,6 +926,46 @@ client.on('entitlementDelete', (entitlement) => {
 
 // Map to store active games: key is channelId, value is GameManager instance.
 const activeGames = new Map();
+const activeCribbageGames = new Map();
+const cribbageDiscardSelections = new Map();
+const cribbageTableMessageIds = new Map();
+
+const persistCribbageGame = (game) => {
+    if (!game || !game.channelId) return;
+    if (game.state === 'GAME_OVER') {
+        gameStateStore.remove(game.channelId);
+        return;
+    }
+    gameStateStore.put(game.channelId, { type: 'cribbage', snapshot: game.toSnapshot() });
+};
+
+const clearCribbageDiscardSelection = (channelId, userId) => {
+    cribbageDiscardSelections.delete(`${channelId}:${userId}`);
+};
+
+const upsertCribbageTableMessage = async (channel, channelId, payload) => {
+    if (!channel || !channelId) return null;
+    const normalized = typeof payload === 'string'
+        ? { content: payload, components: createCribbageActionComponents(channelId) }
+        : { ...(payload || {}) };
+    delete normalized.ephemeral;
+
+    const existingMessageId = cribbageTableMessageIds.get(channelId);
+    if (existingMessageId) {
+        try {
+            const existing = await channel.messages.fetch(existingMessageId);
+            await existing.edit(normalized);
+            return existing;
+        } catch (err) {
+            logger.warn(`⚠️ Failed to update Cribbage HUD ${existingMessageId}; creating a new one.`);
+            cribbageTableMessageIds.delete(channelId);
+        }
+    }
+
+    const created = await channel.send(normalized);
+    cribbageTableMessageIds.set(channelId, created.id);
+    return created;
+};
 
 // --- Cleanup when a game's channel/thread is deleted ---
 // If a thread (or channel) hosting a game is deleted, the game is unrecoverable (there is
@@ -867,6 +983,15 @@ const removeGameForDeletedChannel = (channelId, kind) => {
             }
             activeGames.delete(channelId);
             logger.info(`🧹 Removed active game for deleted ${kind} ${channelId}`);
+        }
+        const cribbageGame = activeCribbageGames.get(channelId);
+        if (cribbageGame) {
+            activeCribbageGames.delete(channelId);
+            logger.info(`🧹 Removed active cribbage game for deleted ${kind} ${channelId}`);
+        }
+        cribbageTableMessageIds.delete(channelId);
+        for (const key of cribbageDiscardSelections.keys()) {
+            if (key.startsWith(`${channelId}:`)) cribbageDiscardSelections.delete(key);
         }
         gameStateStore.remove(channelId);
     } catch (err) {
@@ -927,17 +1052,43 @@ client.on('ready', async () => {
             const { SpectatorView } = await import('./game_logic/SpectatorView.js');
             for (const channelId of savedChannelIds) {
                 try {
-                    if (activeGames.has(channelId)) continue; // already live
-                    const snap = saved[channelId];
-                    const { publicAnnounce, privatePrompt } = buildGameComms(client, channelId, { activeGames, retryDiscordCall });
-                    const game = GameManager.fromSnapshot(snap, { publicAnnounce, privatePrompt });
-
+                    if (activeGames.has(channelId) || activeCribbageGames.has(channelId)) continue; // already live
+                    const raw = saved[channelId];
+                    const wrapped = raw && typeof raw === 'object' && raw.type && raw.snapshot
+                        ? raw
+                        : { type: 'spades', snapshot: raw };
                     const channel = await client.channels.fetch(channelId).catch(() => null);
                     if (!channel) {
                         logger.error(`♻️ Channel ${channelId} not found; dropping saved game.`);
                         gameStateStore.remove(channelId);
                         continue;
                     }
+                    if (wrapped.type === 'cribbage') {
+                        const publicAnnounce = async (message) => {
+                            const payload = typeof message === 'string'
+                                ? { content: message, components: createCribbageActionComponents(channelId) }
+                                : { ...(message || {}) };
+                            if (!payload.components) {
+                                payload.components = createCribbageActionComponents(channelId);
+                            }
+                            await upsertCribbageTableMessage(channel, channelId, payload);
+                        };
+                        const privatePrompt = async (playerId, message) => {
+                            const target = await client.users.fetch(playerId).catch(() => null);
+                            if (target) await retryDiscordCall(() => target.send(message));
+                        };
+                        const cribGame = CribbageManager.fromSnapshot(wrapped.snapshot, { publicAnnounce, privatePrompt });
+                        cribGame.channelId = channelId;
+                        activeCribbageGames.set(channelId, cribGame);
+                        await upsertCribbageTableMessage(channel, channelId, buildCribbageStatusPayload(cribGame, ['♻️ Cribbage game resumed after restart.']));
+                        await cribGame.processAITurnsIfNeeded();
+                        persistCribbageGame(cribGame);
+                        logger.success(`♻️ Restored cribbage game in channel ${channelId} (state=${cribGame.state}, hand=${cribGame.handNumber}).`);
+                        continue;
+                    }
+
+                    const { publicAnnounce, privatePrompt } = buildGameComms(client, channelId, { activeGames, retryDiscordCall });
+                    const game = GameManager.fromSnapshot(wrapped.snapshot, { publicAnnounce, privatePrompt });
                     game.channel = channel;
                     game.spectatorView = new SpectatorView(game, channel);
                     activeGames.set(channelId, game);
@@ -970,7 +1121,7 @@ client.on('ready', async () => {
                         }
                     }
 
-                    logger.success(`♻️ Restored game in channel ${channelId} (state=${game.state}, hand=${game.currentRound}).`);
+                    logger.success(`♻️ Restored spades game in channel ${channelId} (state=${game.state}, hand=${game.currentRound}).`);
                 } catch (err) {
                     logger.error(`❌ Failed to restore game ${channelId}:`, err);
                     try { gameStateStore.remove(channelId); } catch (e) { /* ignore */ }
@@ -1040,6 +1191,494 @@ const sendHandsAndBiddingButtons = async (game, channel, gameChannelId) => {
   }
 };
 
+const formatCribbageCard = (card) => {
+    if (!card) return '??';
+    const rank = card.rankCode === 'T' ? '10' : card.rankCode;
+    const suit = card.symbol || card.suit?.symbol || card.suitCode;
+    return `${rank}${suit}`;
+};
+
+const getCribbageDeckTheme = (game) => {
+    if (!game || !game.players) return 'classic';
+    const host = game.players.find(p => p.id === game.hostId || p.discordId === game.hostId);
+    const theme = host?.preferences?.deckTheme;
+    return theme || 'classic';
+};
+
+const createCribbageHandComponents = (game, player, channelId, selectedCodes = []) => {
+    const rows = [];
+    const selectedSet = new Set(selectedCodes);
+    const maxPerRow = 5;
+
+    if (game.state === 'DISCARD') {
+        if (game.discardedPlayers.has(player.id)) return rows;
+        const sorted = player.hand.slice().sort((a, b) => b.value - a.value);
+        const cardButtons = sorted.map(card => {
+            const cardCode = `${card.rankCode}${card.suitCode}`;
+            const selected = selectedSet.has(cardCode);
+            return new ButtonBuilder()
+                .setCustomId(`crib_discard:${channelId}:${cardCode}`)
+                .setLabel(formatCribbageCard(card))
+                .setStyle(selected ? ButtonStyle.Success : ButtonStyle.Primary);
+        });
+        for (let i = 0; i < cardButtons.length; i += maxPerRow) {
+            rows.push(new ActionRowBuilder().addComponents(cardButtons.slice(i, i + maxPerRow)));
+        }
+        return rows;
+    }
+
+    if (game.state === 'PEGGING') {
+        const isTurn = game.players[game.currentPlayerIndex]?.id === player.id;
+        const legalSet = new Set(game.getLegalPegCards(player.id).map(c => `${c.rankCode}${c.suitCode}`));
+        const sorted = player.hand.slice().sort((a, b) => b.value - a.value);
+        const cardButtons = sorted.map(card => {
+            const cardCode = `${card.rankCode}${card.suitCode}`;
+            const isLegal = legalSet.has(cardCode);
+            return new ButtonBuilder()
+                .setCustomId(`crib_play:${channelId}:${cardCode}`)
+                .setLabel(formatCribbageCard(card))
+                .setStyle(isLegal ? ButtonStyle.Success : ButtonStyle.Secondary)
+                .setDisabled(!isTurn || !isLegal);
+        });
+        for (let i = 0; i < cardButtons.length; i += maxPerRow) {
+            rows.push(new ActionRowBuilder().addComponents(cardButtons.slice(i, i + maxPerRow)));
+        }
+        const canGo = isTurn && legalSet.size === 0 && player.hand.length > 0;
+        rows.push(
+            new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`crib_go:${channelId}`)
+                    .setLabel('Go')
+                    .setStyle(ButtonStyle.Danger)
+                    .setDisabled(!canGo)
+            )
+        );
+    }
+
+    return rows;
+};
+
+const buildCribbageHandPayload = (game, player, channelId, selectedCodes = []) => {
+    const handText = game.getHandTextForPlayer(player.id) || 'No cards.';
+    const theme = player.preferences?.deckTheme || getCribbageDeckTheme(game);
+    const colorBlindMode = !!player.preferences?.colorBlindMode;
+    let content = `🎴 **Your Cribbage Hand** _(private)_\n${handText}`;
+    const components = createCribbageHandComponents(game, player, channelId, selectedCodes);
+
+    if (game.state === 'DISCARD') {
+        const alreadyDiscarded = game.discardedPlayers.has(player.id);
+        if (alreadyDiscarded) {
+            content += '\n\n✅ You already discarded this hand.';
+        } else {
+            const expected = game.config.discardCount;
+            const remaining = Math.max(0, expected - selectedCodes.length);
+            const selectedText = selectedCodes.length > 0 ? selectedCodes.join(' ') : 'None';
+            content += `\n\nDiscard ${expected} card(s) to the crib.`;
+            content += `\nSelected: ${selectedText}`;
+            if (remaining > 0) content += `\nChoose ${remaining} more card(s).`;
+        }
+    } else if (game.state === 'PEGGING') {
+        const legal = game.getLegalPegCards(player.id).map(formatCribbageCard);
+        content += `\n\nPeg count: **${game.runningTotal}**`;
+        content += legal.length > 0 ? `\nLegal plays: ${legal.join(', ')}` : '\nNo legal plays. Press **Go**.';
+        const isTurn = game.players[game.currentPlayerIndex]?.id === player.id;
+        content += isTurn ? '\n🟢 It is your turn.' : `\n⏳ Waiting for **${game.players[game.currentPlayerIndex]?.username || 'next player'}**.`;
+    }
+
+    const handBuffer = renderHand(player.hand, colorBlindMode, theme);
+    const handAttachment = new AttachmentBuilder(handBuffer, { name: 'cribbage-hand.png' });
+    return {
+        content,
+        components,
+        files: [handAttachment]
+    };
+};
+
+const refreshCribbageHandEphemeral = async (interaction, game, playerId, note = null) => {
+    try {
+        const player = game.getPlayerById(playerId);
+        if (!player) return;
+        const payload = buildCribbageHandPayload(game, player, game.channelId || interaction.channelId);
+        if (note) payload.content = `${note}\n\n${payload.content}`;
+        payload.ephemeral = true;
+        await interaction.followUp(payload);
+    } catch (err) {
+        logger.warn('⚠️ Failed to auto-refresh private cribbage hand message:', err?.message || err);
+    }
+};
+
+const createCribbageActionComponents = (channelId) => {
+    return [
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`crib_view_hand:${channelId}`)
+                .setLabel('🎴 View Hand')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId(`crib_view_status:${channelId}`)
+                .setLabel('📊 View Status')
+                .setStyle(ButtonStyle.Secondary)
+        )
+    ];
+};
+
+const buildCribbageLobbyPayload = (game, note = null) => {
+    const playersDisplay = game.players.length > 0
+        ? game.players.map((p, idx) => `${idx + 1}. ${p.isAI ? '🤖' : '👤'} ${p.username}${p.id === game.hostId ? ' 👑' : ''}`).join('\n')
+        : 'No players yet.';
+    const seatsLeft = Math.max(0, game.getMaxPlayers() - game.players.length);
+    const isFull = seatsLeft === 0;
+
+    const embed = new EmbedBuilder()
+        .setColor('#FFD700')
+        .setTitle(`🪵 Cribbage Lobby — ${game.config.label}`)
+        .setDescription(
+            `Players: **${game.players.length}/${game.getMaxPlayers()}**\n` +
+            (isFull ? '✅ Lobby is full and ready to start.' : `Waiting for **${seatsLeft}** more player(s).`)
+        )
+        .addFields(
+            { name: 'Players', value: playersDisplay, inline: false },
+            {
+                name: 'Controls',
+                value: 'Use buttons below for join/AI/status/hand.\nSlash commands remain available as fallback.',
+                inline: false
+            }
+        )
+        .setFooter({ text: 'View Hand is always private (ephemeral) to the requesting player.' });
+
+    if (note) {
+        embed.addFields({ name: 'Update', value: note, inline: false });
+    }
+
+    const components = [
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`crib_join:${game.channelId}`)
+                .setLabel('➕ Join Lobby')
+                .setStyle(ButtonStyle.Success)
+                .setDisabled(isFull),
+            new ButtonBuilder()
+                .setCustomId(`crib_add_ai:${game.channelId}`)
+                .setLabel('🤖 Add AI')
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(isFull),
+            new ButtonBuilder()
+                .setCustomId(`crib_end:${game.channelId}`)
+                .setLabel('🛑 End Game')
+                .setStyle(ButtonStyle.Danger)
+        ),
+        ...createCribbageActionComponents(game.channelId)
+    ];
+
+    return { embeds: [embed], components };
+};
+
+const createCribbageStatusEmbed = (game) => {
+    const embed = new EmbedBuilder()
+        .setColor('#FFD700')
+        .setTitle(`🪵 Cribbage Table — ${game.config.label}`)
+        .setDescription([
+            `**State:** ${game.state}`,
+            `**Hand:** ${game.handNumber}`,
+            game.players.length > 0 ? `**Dealer:** ${game.players[game.dealerIndex].username}` : null,
+            game.state === 'PEGGING' ? `**Peg Count:** ${game.runningTotal}` : null,
+            game.state === 'PEGGING' ? `**Turn:** ${game.players[game.currentPlayerIndex]?.username || 'n/a'}` : null,
+        ].filter(Boolean).join('\n'));
+
+    embed.setImage('attachment://cribbage-pegboard.png');
+    return embed;
+};
+
+const buildCribbageStatusPayload = (game, extraLines = [], includeActions = true) => {
+    const pegboardPng = renderCribbagePegboard(game);
+    const files = [new AttachmentBuilder(pegboardPng, { name: 'cribbage-pegboard.png' })];
+    const embed = createCribbageStatusEmbed(game);
+    if (game.state === 'PEGGING' && game.pegSequence.length > 0) {
+        try {
+            const cards = game.pegSequence.map(entry => entry.card);
+            const deckTheme = getCribbageDeckTheme(game);
+            const pileBuffer = renderTrickCards(cards, deckTheme);
+            files.push(new AttachmentBuilder(pileBuffer, { name: 'cribbage-peg-cards.png' }));
+            embed.setThumbnail('attachment://cribbage-peg-cards.png');
+        } catch (err) {
+            logger.error('❌ Failed to render cribbage peg pile cards:', err);
+        }
+    }
+    if (extraLines.length > 0) {
+        embed.addFields({ name: 'Update', value: extraLines.join('\n'), inline: false });
+    }
+    const payload = { embeds: [embed], files };
+    if (includeActions && game?.channelId) {
+        payload.components = createCribbageActionComponents(game.channelId);
+    }
+    return payload;
+};
+
+const buildCribbageDealingPayload = (game) => {
+    const host = game.players.find(p => p.id === game.hostId || p.discordId === game.hostId);
+    const cardBackTheme = host?.preferences?.cardBackTheme || 'blue';
+    const deckTheme = getCribbageDeckTheme(game);
+    const cardBacksImage = renderCardBacks(game.config.handSize, cardBackTheme, deckTheme);
+    const attachment = new AttachmentBuilder(cardBacksImage, { name: 'cribbage-dealing.png' });
+    const firstPlayer = game.players[game.nextPlayerIndex(game.dealerIndex)];
+
+    const dealingEmbed = new EmbedBuilder()
+        .setColor('#9CA3AF')
+        .setTitle(`🎴 Cribbage Hand ${game.handNumber} — Dealing`)
+        .setDescription(
+            `**Dealer:** ${game.players[game.dealerIndex]?.username || 'n/a'}\n` +
+            `**First to act:** ${firstPlayer?.username || 'n/a'}\n` +
+            `Each player receives **${game.config.handSize}** cards`
+        )
+        .setImage('attachment://cribbage-dealing.png');
+
+    return {
+        embeds: [dealingEmbed],
+        files: [attachment],
+        components: createCribbageActionComponents(game.channelId)
+    };
+};
+
+const startCribbageIfLobbyFull = async (game, channel) => {
+    if (!game.isLobbyFull()) return null;
+    const started = await game.startGame();
+    if (started?.error) return started.error;
+    await upsertCribbageTableMessage(channel, game.channelId, buildCribbageDealingPayload(game));
+    await game.processAITurnsIfNeeded();
+    persistCribbageGame(game);
+    await upsertCribbageTableMessage(channel, game.channelId, buildCribbageStatusPayload(game, ['✅ Cribbage lobby is full. The hand has started.']));
+    return null;
+};
+
+const handleCribbageCommand = async (interaction) => {
+    const subcommand = interaction.options.getSubcommand();
+    const channelId = interaction.channelId;
+    const game = activeCribbageGames.get(channelId);
+    const user = interaction.user;
+
+    if (subcommand === 'start') {
+        if (game) {
+            return interaction.reply({ content: '❌ A Cribbage game is already active in this channel.', ephemeral: true });
+        }
+        if (activeGames.has(channelId)) {
+            return interaction.reply({ content: '❌ A Spades game is active in this channel. End it before starting Cribbage.', ephemeral: true });
+        }
+
+        const gameMode = interaction.options.getString('mode') || 'classic2';
+        const aiPlayers = interaction.options.getInteger('ai_players') || 0;
+
+        const publicAnnounce = async (message) => {
+            const payload = typeof message === 'string'
+                ? { content: message, components: createCribbageActionComponents(channelId) }
+                : { ...(message || {}) };
+            if (!payload.components) {
+                payload.components = createCribbageActionComponents(channelId);
+            }
+            await upsertCribbageTableMessage(interaction.channel, channelId, payload);
+        };
+        const privatePrompt = async (playerId, message) => {
+            const target = await client.users.fetch(playerId).catch(() => null);
+            if (target) await retryDiscordCall(() => target.send(message));
+        };
+
+        const newGame = new CribbageManager(publicAnnounce, privatePrompt, { gameMode, targetScore: 121 });
+        newGame.channelId = channelId;
+        const hostPreferences = await getUserPreferences(user.id);
+        const addHost = newGame.addPlayer({ id: user.id, username: user.username, preferences: hostPreferences });
+        if (addHost.error) {
+            return interaction.reply({ content: `❌ ${addHost.error}`, ephemeral: true });
+        }
+
+        for (let i = 0; i < aiPlayers; i++) {
+            const added = newGame.addAIPlayer();
+            if (added.error) break;
+        }
+
+        activeCribbageGames.set(channelId, newGame);
+        persistCribbageGame(newGame);
+        await interaction.reply({
+            content: '✅ Cribbage lobby created. Updating the table panel…',
+            ephemeral: true
+        });
+        await upsertCribbageTableMessage(
+            interaction.channel,
+            channelId,
+            buildCribbageLobbyPayload(
+                newGame,
+                '🎴 Lobby created. Use buttons below to join/add AI. View Hand is private to each player.'
+            )
+        );
+
+        const autoStartErr = await startCribbageIfLobbyFull(newGame, interaction.channel);
+        if (autoStartErr) {
+            return interaction.followUp({ content: `⚠️ ${autoStartErr}` });
+        }
+        return;
+    }
+
+    if (!game) {
+        return interaction.reply({ content: '❌ No active Cribbage game found in this channel.', ephemeral: true });
+    }
+
+    if (subcommand === 'join') {
+        const playerPreferences = await getUserPreferences(user.id);
+        const added = game.addPlayer({ id: user.id, username: user.username, preferences: playerPreferences });
+        if (added.error) {
+            return interaction.reply({ content: `❌ ${added.error}`, ephemeral: true });
+        }
+        await interaction.reply({ content: '✅ Joined lobby. Updating the table panel…', ephemeral: true });
+        await upsertCribbageTableMessage(interaction.channel, channelId, buildCribbageLobbyPayload(game, `✅ **${user.username}** joined the lobby.`));
+        persistCribbageGame(game);
+        const autoStartErr = await startCribbageIfLobbyFull(game, interaction.channel);
+        if (autoStartErr) {
+            return interaction.followUp({ content: `⚠️ ${autoStartErr}` });
+        }
+        return;
+    }
+
+    if (subcommand === 'addai') {
+        if (game.state !== 'LOBBY') {
+            return interaction.reply({ content: '❌ You can only add AI players in the lobby.', ephemeral: true });
+        }
+        if (game.hostId !== user.id) {
+            return interaction.reply({ content: '❌ Only the lobby host can add AI players.', ephemeral: true });
+        }
+        const count = interaction.options.getInteger('count') || 1;
+        let addedCount = 0;
+        for (let i = 0; i < count; i++) {
+            const added = game.addAIPlayer();
+            if (added.error) break;
+            addedCount++;
+        }
+        if (addedCount === 0) {
+            return interaction.reply({ content: '❌ Could not add any AI players (lobby may be full).', ephemeral: true });
+        }
+        await interaction.reply({ content: `✅ Added ${addedCount} AI player(s). Updating the table panel…`, ephemeral: true });
+        await upsertCribbageTableMessage(interaction.channel, channelId, buildCribbageLobbyPayload(game, `🤖 Added **${addedCount}** AI player(s).`));
+        persistCribbageGame(game);
+        const autoStartErr = await startCribbageIfLobbyFull(game, interaction.channel);
+        if (autoStartErr) {
+            return interaction.followUp({ content: `⚠️ ${autoStartErr}` });
+        }
+        return;
+    }
+
+    if (subcommand === 'end') {
+        if (game.hostId !== user.id) {
+            return interaction.reply({ content: '❌ Only the lobby host can end this Cribbage game.', ephemeral: true });
+        }
+        await upsertCribbageTableMessage(interaction.channel, channelId, {
+            content: '🛑 Cribbage game ended by host.',
+            embeds: [],
+            files: [],
+            components: []
+        });
+        activeCribbageGames.delete(channelId);
+        cribbageTableMessageIds.delete(channelId);
+        for (const key of cribbageDiscardSelections.keys()) {
+            if (key.startsWith(`${channelId}:`)) cribbageDiscardSelections.delete(key);
+        }
+        gameStateStore.remove(channelId);
+        return interaction.reply({ content: '🛑 Cribbage game ended.', ephemeral: true });
+    }
+
+    if (subcommand === 'status') {
+        const payload = buildCribbageStatusPayload(game);
+        payload.ephemeral = true;
+        return interaction.reply(payload);
+    }
+
+    const player = game.getPlayerById(user.id);
+    if (!player) {
+        return interaction.reply({ content: '❌ You are not a player in this Cribbage game.', ephemeral: true });
+    }
+
+    if (subcommand === 'hand') {
+        clearCribbageDiscardSelection(channelId, user.id);
+        const payload = buildCribbageHandPayload(game, player, channelId);
+        payload.ephemeral = true;
+        return interaction.reply(payload);
+    }
+
+    if (subcommand === 'discard') {
+        const cards = interaction.options.getString('cards');
+        const result = game.collectDiscard(user.id, cards);
+        if (result.error) {
+            return interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
+        }
+        await interaction.reply({ content: `✅ Discarded ${result.selected.map(formatCribbageCard).join(' ')} to the crib.`, ephemeral: true });
+        clearCribbageDiscardSelection(channelId, user.id);
+        await game.processAITurnsIfNeeded();
+
+        if (game.state === 'DISCARD' && game.allDiscardsIn()) {
+            for (let i = 0; i < game.config.extraCribCardsFromDeck; i++) {
+                const extra = game.deck.deal();
+                if (extra) game.crib.push(extra);
+            }
+            game.showHands = new Map(game.players.map(p => [p.id, p.hand.slice()]));
+            const cut = game.cutStarter();
+            if (cut.error) {
+                return interaction.followUp({ content: `❌ ${cut.error}` });
+            }
+            game.startPegging();
+            const heelsLine = cut.heelsAwarded ? `\n🂫 His heels: **${cut.heelsAwarded}** scores 2.` : '';
+            await upsertCribbageTableMessage(interaction.channel, channelId, buildCribbageStatusPayload(game, [
+                `🔪 Starter cut: **${formatCribbageCard(cut.starterCard)}**${heelsLine}`,
+                'Pegging begins.',
+            ]));
+            await game.processAITurnsIfNeeded();
+        }
+        await refreshCribbageHandEphemeral(interaction, game, user.id, '🔄 Your hand has been refreshed.');
+        persistCribbageGame(game);
+        return;
+    }
+
+    if (subcommand === 'play') {
+        const card = interaction.options.getString('card');
+        const result = game.playPegCard(user.id, card);
+        if (result.error) {
+            return interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
+        }
+
+        await interaction.reply({ content: `✅ Played **${formatCribbageCard(result.card)}**.`, ephemeral: true });
+        const publicLines = [
+            `🃏 **${user.username}** played **${formatCribbageCard(result.card)}**`,
+            `Count: **${game.runningTotal}**`,
+            ...(result.events || []),
+        ];
+        await upsertCribbageTableMessage(interaction.channel, channelId, buildCribbageStatusPayload(game, publicLines));
+
+        if (game.isPeggingFinished()) {
+            const handResult = await game.finalizeHandAndAdvance();
+            const summaryLine = handResult.finished ? '🏁 Game finished.' : '🪵 Hand scored. Next hand started.';
+            await upsertCribbageTableMessage(interaction.channel, channelId, buildCribbageStatusPayload(game, [summaryLine]));
+        }
+        await game.processAITurnsIfNeeded();
+        await refreshCribbageHandEphemeral(interaction, game, user.id, '🔄 Your hand has been refreshed.');
+        persistCribbageGame(game);
+        return;
+    }
+
+    if (subcommand === 'go') {
+        const result = game.declareGo(user.id);
+        if (result.error) {
+            return interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
+        }
+        await interaction.reply({ content: '✅ You called **Go**.', ephemeral: true });
+        await upsertCribbageTableMessage(interaction.channel, channelId, buildCribbageStatusPayload(game, result.events));
+
+        if (game.isPeggingFinished()) {
+            const handResult = await game.finalizeHandAndAdvance();
+            const summaryLine = handResult.finished ? '🏁 Game finished.' : '🪵 Hand scored. Next hand started.';
+            await upsertCribbageTableMessage(interaction.channel, channelId, buildCribbageStatusPayload(game, [summaryLine]));
+        }
+        await game.processAITurnsIfNeeded();
+        await refreshCribbageHandEphemeral(interaction, game, user.id, '🔄 Your hand has been refreshed.');
+        persistCribbageGame(game);
+        return;
+    }
+};
+
 // --- Interaction Handling ---
 client.on('interactionCreate', async interaction => {
     try {
@@ -1078,6 +1717,249 @@ client.on('interactionCreate', async interaction => {
         // but the DM channel ID for bid buttons (hence the lookup fix below).
         const { user, channelId, options } = interaction;
         const game = activeGames.get(channelId); // Only successful for guild-based interactions
+
+        // ----------------------------------------------------
+        // Cribbage button interactions
+        // ----------------------------------------------------
+        if (interaction.isButton() && interaction.customId.startsWith('crib_join:')) {
+            const [, gameChannelId] = interaction.customId.split(':');
+            const cribGame = activeCribbageGames.get(gameChannelId);
+            if (!cribGame) {
+                return interaction.reply({ content: '❌ No active Cribbage game found.', ephemeral: true });
+            }
+            if (cribGame.state !== 'LOBBY') {
+                return interaction.reply({ content: '❌ Lobby is closed. The game already started.', ephemeral: true });
+            }
+
+            const preferences = await getUserPreferences(interaction.user.id);
+            const added = cribGame.addPlayer({
+                id: interaction.user.id,
+                username: interaction.user.username,
+                preferences
+            });
+            if (added.error) {
+                return interaction.reply({ content: `❌ ${added.error}`, ephemeral: true });
+            }
+
+            persistCribbageGame(cribGame);
+            await interaction.update(buildCribbageLobbyPayload(
+                cribGame,
+                `✅ **${interaction.user.username}** joined the lobby.`
+            ));
+
+            const autoStartErr = await startCribbageIfLobbyFull(cribGame, interaction.channel);
+            if (autoStartErr) {
+                await interaction.followUp({ content: `⚠️ ${autoStartErr}`, ephemeral: true });
+            }
+            return;
+        }
+
+        if (interaction.isButton() && interaction.customId.startsWith('crib_add_ai:')) {
+            const [, gameChannelId] = interaction.customId.split(':');
+            const cribGame = activeCribbageGames.get(gameChannelId);
+            if (!cribGame) {
+                return interaction.reply({ content: '❌ No active Cribbage game found.', ephemeral: true });
+            }
+            if (cribGame.state !== 'LOBBY') {
+                return interaction.reply({ content: '❌ You can only add AI in the lobby.', ephemeral: true });
+            }
+            if (interaction.user.id !== cribGame.hostId) {
+                return interaction.reply({ content: '❌ Only the lobby host can add AI players.', ephemeral: true });
+            }
+
+            const added = cribGame.addAIPlayer();
+            if (added.error) {
+                return interaction.reply({ content: `❌ ${added.error}`, ephemeral: true });
+            }
+
+            persistCribbageGame(cribGame);
+            await interaction.update(buildCribbageLobbyPayload(
+                cribGame,
+                `🤖 Added **${added.player.username}**.`
+            ));
+
+            const autoStartErr = await startCribbageIfLobbyFull(cribGame, interaction.channel);
+            if (autoStartErr) {
+                await interaction.followUp({ content: `⚠️ ${autoStartErr}`, ephemeral: true });
+            }
+            return;
+        }
+
+        if (interaction.isButton() && interaction.customId.startsWith('crib_end:')) {
+            const [, gameChannelId] = interaction.customId.split(':');
+            const cribGame = activeCribbageGames.get(gameChannelId);
+            if (!cribGame) {
+                return interaction.reply({ content: '❌ No active Cribbage game found.', ephemeral: true });
+            }
+            if (interaction.user.id !== cribGame.hostId) {
+                return interaction.reply({ content: '❌ Only the lobby host can end this game.', ephemeral: true });
+            }
+            activeCribbageGames.delete(gameChannelId);
+            cribbageTableMessageIds.delete(gameChannelId);
+            gameStateStore.remove(gameChannelId);
+            for (const key of cribbageDiscardSelections.keys()) {
+                if (key.startsWith(`${gameChannelId}:`)) cribbageDiscardSelections.delete(key);
+            }
+            return interaction.update({
+                content: '🛑 Cribbage game ended by host.',
+                embeds: [],
+                components: []
+            });
+        }
+
+        if (interaction.isButton() && interaction.customId.startsWith('crib_discard:')) {
+            const [, gameChannelId, cardCode] = interaction.customId.split(':');
+            const cribGame = activeCribbageGames.get(gameChannelId);
+            if (!cribGame) {
+                return interaction.reply({ content: '❌ No active Cribbage game found.', ephemeral: true });
+            }
+            const player = cribGame.getPlayerById(interaction.user.id);
+            if (!player) {
+                return interaction.reply({ content: '❌ You are not a player in this Cribbage game.', ephemeral: true });
+            }
+            if (cribGame.state !== 'DISCARD') {
+                return interaction.reply({ content: '❌ Discard phase is over.', ephemeral: true });
+            }
+            if (cribGame.discardedPlayers.has(player.id)) {
+                return interaction.reply({ content: '❌ You already discarded this hand.', ephemeral: true });
+            }
+
+            const selectionKey = `${gameChannelId}:${interaction.user.id}`;
+            const selected = cribbageDiscardSelections.get(selectionKey) || [];
+            const idx = selected.indexOf(cardCode);
+            if (idx >= 0) selected.splice(idx, 1);
+            else selected.push(cardCode);
+
+            const expected = cribGame.config.discardCount;
+            if (selected.length > expected) selected.splice(0, selected.length - expected);
+            cribbageDiscardSelections.set(selectionKey, selected);
+
+            if (selected.length < expected) {
+                return interaction.update(buildCribbageHandPayload(cribGame, player, gameChannelId, selected));
+            }
+
+            const discardResult = cribGame.collectDiscard(interaction.user.id, selected.join(' '));
+            if (discardResult.error) {
+                clearCribbageDiscardSelection(gameChannelId, interaction.user.id);
+                return interaction.reply({ content: `❌ ${discardResult.error}`, ephemeral: true });
+            }
+            clearCribbageDiscardSelection(gameChannelId, interaction.user.id);
+            await interaction.update({
+                content: `✅ Discarded ${discardResult.selected.map(formatCribbageCard).join(' ')} to the crib.`,
+                components: [],
+            });
+            await cribGame.processAITurnsIfNeeded();
+
+            if (cribGame.state === 'DISCARD' && cribGame.allDiscardsIn()) {
+                for (let i = 0; i < cribGame.config.extraCribCardsFromDeck; i++) {
+                    const extra = cribGame.deck.deal();
+                    if (extra) cribGame.crib.push(extra);
+                }
+                cribGame.showHands = new Map(cribGame.players.map(p => [p.id, p.hand.slice()]));
+                const cut = cribGame.cutStarter();
+                if (cut.error) {
+                    return interaction.followUp({ content: `❌ ${cut.error}` });
+                }
+                cribGame.startPegging();
+                const heelsLine = cut.heelsAwarded ? `\n🂫 His heels: **${cut.heelsAwarded}** scores 2.` : '';
+                await upsertCribbageTableMessage(interaction.channel, gameChannelId, buildCribbageStatusPayload(cribGame, [
+                    `🔪 Starter cut: **${formatCribbageCard(cut.starterCard)}**${heelsLine}`,
+                    'Pegging begins.',
+                ]));
+                await cribGame.processAITurnsIfNeeded();
+            }
+
+            await refreshCribbageHandEphemeral(interaction, cribGame, interaction.user.id, '🔄 Your hand has been refreshed.');
+            persistCribbageGame(cribGame);
+            return;
+        }
+
+        if (interaction.isButton() && interaction.customId.startsWith('crib_play:')) {
+            const [, gameChannelId, cardCode] = interaction.customId.split(':');
+            const cribGame = activeCribbageGames.get(gameChannelId);
+            if (!cribGame) {
+                return interaction.reply({ content: '❌ No active Cribbage game found.', ephemeral: true });
+            }
+            const result = cribGame.playPegCard(interaction.user.id, cardCode);
+            if (result.error) {
+                return interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
+            }
+
+            await interaction.update({
+                content: `✅ Played **${formatCribbageCard(result.card)}**.`,
+                components: [],
+            });
+            const publicLines = [
+                `🃏 **${interaction.user.username}** played **${formatCribbageCard(result.card)}**`,
+                `Count: **${cribGame.runningTotal}**`,
+                ...(result.events || []),
+            ];
+            await upsertCribbageTableMessage(interaction.channel, gameChannelId, buildCribbageStatusPayload(cribGame, publicLines));
+
+            if (cribGame.isPeggingFinished()) {
+                const handResult = await cribGame.finalizeHandAndAdvance();
+                const summaryLine = handResult.finished ? '🏁 Game finished.' : '🪵 Hand scored. Next hand started.';
+                await upsertCribbageTableMessage(interaction.channel, gameChannelId, buildCribbageStatusPayload(cribGame, [summaryLine]));
+            }
+            await cribGame.processAITurnsIfNeeded();
+            await refreshCribbageHandEphemeral(interaction, cribGame, interaction.user.id, '🔄 Your hand has been refreshed.');
+            persistCribbageGame(cribGame);
+            return;
+        }
+
+        if (interaction.isButton() && interaction.customId.startsWith('crib_go:')) {
+            const [, gameChannelId] = interaction.customId.split(':');
+            const cribGame = activeCribbageGames.get(gameChannelId);
+            if (!cribGame) {
+                return interaction.reply({ content: '❌ No active Cribbage game found.', ephemeral: true });
+            }
+            const result = cribGame.declareGo(interaction.user.id);
+            if (result.error) {
+                return interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
+            }
+            await interaction.update({ content: '✅ You called **Go**.', components: [] });
+            await upsertCribbageTableMessage(interaction.channel, gameChannelId, buildCribbageStatusPayload(cribGame, result.events));
+
+            if (cribGame.isPeggingFinished()) {
+                const handResult = await cribGame.finalizeHandAndAdvance();
+                const summaryLine = handResult.finished ? '🏁 Game finished.' : '🪵 Hand scored. Next hand started.';
+                await upsertCribbageTableMessage(interaction.channel, gameChannelId, buildCribbageStatusPayload(cribGame, [summaryLine]));
+            }
+            await cribGame.processAITurnsIfNeeded();
+            await refreshCribbageHandEphemeral(interaction, cribGame, interaction.user.id, '🔄 Your hand has been refreshed.');
+            persistCribbageGame(cribGame);
+            return;
+        }
+
+        if (interaction.isButton() && interaction.customId.startsWith('crib_view_hand:')) {
+            const [, gameChannelId] = interaction.customId.split(':');
+            const cribGame = activeCribbageGames.get(gameChannelId);
+            if (!cribGame) {
+                return interaction.reply({ content: '❌ No active Cribbage game found.', ephemeral: true });
+            }
+            const player = cribGame.getPlayerById(interaction.user.id);
+            if (!player) {
+                return interaction.reply({
+                    content: '❌ You are not a player in this Cribbage game. Join from lobby or ask host to add an AI slot instead.',
+                    ephemeral: true
+                });
+            }
+            clearCribbageDiscardSelection(gameChannelId, interaction.user.id);
+            const payload = buildCribbageHandPayload(cribGame, player, gameChannelId);
+            payload.ephemeral = true;
+            return interaction.reply(payload);
+        }
+
+        if (interaction.isButton() && interaction.customId.startsWith('crib_view_status:')) {
+            const [, gameChannelId] = interaction.customId.split(':');
+            const cribGame = activeCribbageGames.get(gameChannelId);
+            if (!cribGame) {
+                return interaction.reply({ content: '❌ No active Cribbage game found.', ephemeral: true });
+            }
+            const payload = buildCribbageStatusPayload(cribGame, [], false);
+            payload.ephemeral = true;
+            return interaction.reply(payload);
+        }
 
         // ----------------------------------------------------
         // Handle Card Play Button Interaction (PLAYING)
@@ -3965,6 +4847,11 @@ client.on('interactionCreate', async interaction => {
 
         const commandName = interaction.commandName; 
 
+        if (commandName === 'cribbage') {
+            await handleCribbageCommand(interaction);
+            return;
+        }
+
         if (commandName !== 'spades') return;
 
         const subcommand = options.getSubcommand();
@@ -6069,5 +6956,3 @@ process.on('uncaughtException', (error) => {
 
 // --- Start Bot ---
 client.login(TOKEN);
-
-
