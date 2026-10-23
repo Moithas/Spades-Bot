@@ -1248,6 +1248,7 @@ const formatCribbageBreakdown = (breakdown = {}) => {
 const createCribbageScoringBreakdownPayload = async (game, handSummaries = [], cribSummary = {}) => {
     const deckTheme = getCribbageDeckTheme(game);
     const rows = [];
+    const summarySegments = [];
 
     for (const hand of handSummaries) {
         const sortedCards = sortCribbageHandForDisplay(hand.cards || []);
@@ -1256,6 +1257,7 @@ const createCribbageScoringBreakdownPayload = async (game, handSummaries = [], c
             label: `${hand.playerName} — ${hand.total} pts (${formatCribbageBreakdown(hand.breakdown)})`,
             buffer: rowBuffer,
         });
+        summarySegments.push(`${hand.playerName}: ${hand.total}`);
     }
 
     const cribCards = sortCribbageHandForDisplay(cribSummary.rawCards || []);
@@ -1263,6 +1265,7 @@ const createCribbageScoringBreakdownPayload = async (game, handSummaries = [], c
         label: `Crib (${cribSummary.dealerName || 'Dealer'}) — ${cribSummary.total || 0} pts (${formatCribbageBreakdown(cribSummary.breakdown)})`,
         buffer: renderTrickCards(cribCards, deckTheme),
     });
+    summarySegments.push(`Crib: ${cribSummary.total || 0}`);
 
     const loadedRows = [];
     for (const row of rows) {
@@ -1296,10 +1299,11 @@ const createCribbageScoringBreakdownPayload = async (game, handSummaries = [], c
 
     const attachment = new AttachmentBuilder(canvas.toBuffer('image/png'), { name: 'cribbage-scoring-breakdown.png' });
     const starterLine = cribSummary?.starter ? `\nStarter: **${cribSummary.starter}**` : '';
+    const summaryLine = summarySegments.length > 0 ? `\nTotals: **${summarySegments.join(' • ')}**` : '';
     const embed = new EmbedBuilder()
         .setColor('#8E44AD')
         .setTitle('🧮 Scoring Breakdown')
-        .setDescription(`Hand ${game.handNumber}${starterLine}`)
+        .setDescription(`Hand ${game.handNumber}${starterLine}${summaryLine}`)
         .setImage('attachment://cribbage-scoring-breakdown.png');
 
     return { embeds: [embed], files: [attachment] };
@@ -1555,6 +1559,14 @@ const createCribbageStatusEmbed = (game) => {
     const turnDisplay = !turnPlayer
         ? 'n/a'
         : (turnPlayer.isAI ? `**${turnPlayer.username}**` : `<@${turnPlayer.id}>`);
+    const cardCountLines = game.players.map(player => {
+        const display = player.isAI ? `**${player.username}**` : `<@${player.id}>`;
+        const legalCount = game.state === 'PEGGING' ? game.getLegalPegCards(player.id).length : 0;
+        const playState = game.state === 'PEGGING'
+            ? (legalCount > 0 ? 'Can play' : (player.hand.length > 0 ? 'Go only' : 'Out'))
+            : 'Waiting';
+        return `${display}: **${player.hand.length}** (${playState})`;
+    }).join('\n');
     const embed = new EmbedBuilder()
         .setColor('#FFD700')
         .setTitle(`🪵 Cribbage Table — ${game.config.label}`)
@@ -1565,6 +1577,9 @@ const createCribbageStatusEmbed = (game) => {
             game.state === 'PEGGING' ? `**Current Points:** ${game.runningTotal}` : null,
             game.state === 'PEGGING' ? `**Turn:** ${turnDisplay}` : null,
         ].filter(Boolean).join('\n'));
+    if (game.state === 'PEGGING') {
+        embed.addFields({ name: 'Player Card Count', value: cardCountLines || 'n/a', inline: false });
+    }
 
     embed.setImage('attachment://cribbage-pegboard.png');
     return embed;
