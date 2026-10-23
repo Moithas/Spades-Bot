@@ -1517,6 +1517,7 @@ const buildCribbageLobbyPayload = (game, note = null) => {
 };
 
 const createCribbageStatusEmbed = (game) => {
+    const displayState = game.state === 'PEGGING' ? 'PLAYING' : game.state;
     const turnPlayer = game.players[game.currentPlayerIndex];
     const turnDisplay = !turnPlayer
         ? 'n/a'
@@ -1533,7 +1534,7 @@ const createCribbageStatusEmbed = (game) => {
         .setColor('#FFD700')
         .setTitle(`🪵 Cribbage Table — ${game.config.label}`)
         .setDescription([
-            `**State:** ${game.state}`,
+            `**State:** ${displayState}`,
             `**Hand:** ${game.handNumber}`,
             game.players.length > 0 ? `**Dealer:** ${game.players[game.dealerIndex].username}` : null,
             game.starterCard ? `**Cut Card:** ${formatCribbageCard(game.starterCard)}` : null,
