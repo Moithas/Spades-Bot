@@ -1331,7 +1331,7 @@ const buildCribbageHandPayload = (game, player, channelId, selectedCodes = []) =
         content += isTurn ? '\n🟢 It is your turn.' : `\n⏳ Waiting for **${game.players[game.currentPlayerIndex]?.username || 'next player'}**.`;
     }
 
-    const handBuffer = renderHand(player.hand, colorBlindMode, theme);
+    const handBuffer = renderTrickCards(player.hand, theme);
     const handAttachment = new AttachmentBuilder(handBuffer, { name: 'cribbage-hand.png' });
     return {
         content,
@@ -1578,13 +1578,16 @@ const handleCribbageCommand = async (interaction) => {
         return interaction.reply(payload);
     };
 
-    if (['start', 'join', 'addai', 'end', 'status', 'hand', 'discard', 'play', 'go'].includes(subcommand)) {
+    if (['join', 'addai', 'end', 'status', 'hand', 'discard', 'play', 'go'].includes(subcommand)) {
         if (!interaction.deferred && !interaction.replied) {
             await interaction.deferReply({ ephemeral: true });
         }
     }
 
     if (subcommand === 'start') {
+        if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferReply({ ephemeral: true });
+        }
         if (game) {
             return respond({ content: '❌ A Cribbage game is already active in this channel.', ephemeral: true });
         }
@@ -1593,16 +1596,15 @@ const handleCribbageCommand = async (interaction) => {
         }
 
         let gameChannel = interaction.channel;
-        let threadStartMessage = null;
         let gameChannelId = channelId;
 
         if (!interaction.channel?.isThread?.()) {
-            threadStartMessage = await respond({
-                content: '🎮 Creating a dedicated Cribbage thread...',
-                ephemeral: true
-            });
+            await interaction.editReply({ content: '🎮 Creating a dedicated Cribbage thread...' });
             try {
-                const thread = await threadStartMessage.startThread({
+                if (!interaction.channel?.threads?.create) {
+                    throw new Error('This channel does not support thread creation.');
+                }
+                const thread = await interaction.channel.threads.create({
                     name: `Cribbage - ${user.username}`,
                     autoArchiveDuration: 60,
                     reason: `Cribbage game started by ${user.username}`
@@ -1654,16 +1656,9 @@ const handleCribbageCommand = async (interaction) => {
         activeCribbageGames.set(gameChannelId, newGame);
         persistCribbageGame(newGame);
 
-        if (threadStartMessage) {
-            await interaction.editReply({
-                content: '✅ Cribbage lobby created. Updating the table panel…'
-            });
-        } else {
-            await interaction.reply({
-                content: '✅ Cribbage lobby created. Updating the table panel…',
-                ephemeral: true
-            });
-        }
+        await interaction.editReply({
+            content: '✅ Cribbage lobby created. Updating the table panel…'
+        });
         await upsertCribbageTableMessage(
             gameChannel,
             gameChannelId,
