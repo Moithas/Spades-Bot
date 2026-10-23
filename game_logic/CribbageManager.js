@@ -687,6 +687,11 @@ export default class CribbageManager {
             dealerName: dealer.username,
             dealerId: dealer.id,
             starter: this.starterCard ? cardToText(this.starterCard) : null,
+            starterRaw: this.starterCard ? {
+                rankCode: this.starterCard.rankCode,
+                suitCode: this.starterCard.suitCode,
+                value: this.starterCard.value,
+            } : null,
             cards: this.crib.map(cardToText),
             rawCards: this.crib.map(card => ({
                 rankCode: card.rankCode,
