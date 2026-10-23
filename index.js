@@ -960,19 +960,25 @@ const clearCribbageHandMessage = async (channelId, userId) => {
     }
 };
 
-const upsertCribbageTableMessage = async (channel, channelId, payload) => {
+const upsertCribbageTableMessage = async (channel, channelId, payload, options = {}) => {
     if (!channel || !channelId) return null;
     const normalized = typeof payload === 'string'
         ? { content: payload, components: createCribbageActionComponents(channelId) }
         : { ...(payload || {}) };
     delete normalized.ephemeral;
+    const forceRepost = !!options.forceRepost;
 
     const existingMessageId = cribbageTableMessageIds.get(channelId);
     if (existingMessageId) {
         try {
             const existing = await channel.messages.fetch(existingMessageId);
-            await existing.edit(normalized);
-            return existing;
+            if (forceRepost) {
+                await existing.delete().catch(() => null);
+                cribbageTableMessageIds.delete(channelId);
+            } else {
+                await existing.edit(normalized);
+                return existing;
+            }
         } catch (err) {
             logger.warn(`⚠️ Failed to update Cribbage HUD ${existingMessageId}; creating a new one.`);
             cribbageTableMessageIds.delete(channelId);
@@ -1220,6 +1226,15 @@ const formatCribbageCard = (card) => {
     return `${rank}${suit}`;
 };
 
+const sortCribbageHandForDisplay = (cards = []) => {
+    const suitOrder = { S: 0, H: 1, D: 2, C: 3 };
+    return cards.slice().sort((a, b) => {
+        const suitDelta = (suitOrder[a.suitCode] ?? 99) - (suitOrder[b.suitCode] ?? 99);
+        if (suitDelta !== 0) return suitDelta;
+        return (b.value || 0) - (a.value || 0);
+    });
+};
+
 const createCribbageCribBreakdownEmbed = (cribSummary) => {
     const breakdown = cribSummary?.breakdown || {};
     const starterLine = cribSummary?.starter ? `\nStarter: **${cribSummary.starter}**` : '';
@@ -1255,11 +1270,11 @@ const createCribbageHandComponents = (game, player, channelId, selectedCodes = [
     const rows = [];
     const selectedSet = new Set(selectedCodes);
     const maxPerRow = 5;
+    const sortedHand = sortCribbageHandForDisplay(player.hand);
 
     if (game.state === 'DISCARD') {
         if (game.discardedPlayers.has(player.id)) return rows;
-        const sorted = player.hand.slice().sort((a, b) => b.value - a.value);
-        const cardButtons = sorted.map(card => {
+        const cardButtons = sortedHand.map(card => {
             const cardCode = `${card.rankCode}${card.suitCode}`;
             const selected = selectedSet.has(cardCode);
             return new ButtonBuilder()
@@ -1276,8 +1291,7 @@ const createCribbageHandComponents = (game, player, channelId, selectedCodes = [
     if (game.state === 'PEGGING') {
         const isTurn = game.players[game.currentPlayerIndex]?.id === player.id;
         const legalSet = new Set(game.getLegalPegCards(player.id).map(c => `${c.rankCode}${c.suitCode}`));
-        const sorted = player.hand.slice().sort((a, b) => b.value - a.value);
-        const cardButtons = sorted.map(card => {
+        const cardButtons = sortedHand.map(card => {
             const cardCode = `${card.rankCode}${card.suitCode}`;
             const isLegal = legalSet.has(cardCode);
             return new ButtonBuilder()
@@ -1305,7 +1319,8 @@ const createCribbageHandComponents = (game, player, channelId, selectedCodes = [
 };
 
 const buildCribbageHandPayload = (game, player, channelId, selectedCodes = []) => {
-    const handText = game.getHandTextForPlayer(player.id) || 'No cards.';
+    const sortedHand = sortCribbageHandForDisplay(player.hand);
+    const handText = sortedHand.length > 0 ? sortedHand.map(formatCribbageCard).join(' ') : 'No cards.';
     const theme = player.preferences?.deckTheme || getCribbageDeckTheme(game);
     const colorBlindMode = !!player.preferences?.colorBlindMode;
     let content = `🎴 **Your Cribbage Hand** _(private)_\n${handText}`;
@@ -1331,7 +1346,7 @@ const buildCribbageHandPayload = (game, player, channelId, selectedCodes = []) =
         content += isTurn ? '\n🟢 It is your turn.' : `\n⏳ Waiting for **${game.players[game.currentPlayerIndex]?.username || 'next player'}**.`;
     }
 
-    const handBuffer = renderTrickCards(player.hand, theme);
+    const handBuffer = renderTrickCards(sortedHand, theme);
     const handAttachment = new AttachmentBuilder(handBuffer, { name: 'cribbage-hand.png' });
     return {
         content,
@@ -1490,6 +1505,10 @@ const buildCribbageLobbyPayload = (game, note = null) => {
 };
 
 const createCribbageStatusEmbed = (game) => {
+    const turnPlayer = game.players[game.currentPlayerIndex];
+    const turnDisplay = !turnPlayer
+        ? 'n/a'
+        : (turnPlayer.isAI ? `**${turnPlayer.username}**` : `<@${turnPlayer.id}>`);
     const embed = new EmbedBuilder()
         .setColor('#FFD700')
         .setTitle(`🪵 Cribbage Table — ${game.config.label}`)
@@ -1498,7 +1517,7 @@ const createCribbageStatusEmbed = (game) => {
             `**Hand:** ${game.handNumber}`,
             game.players.length > 0 ? `**Dealer:** ${game.players[game.dealerIndex].username}` : null,
             game.state === 'PEGGING' ? `**Peg Count:** ${game.runningTotal}` : null,
-            game.state === 'PEGGING' ? `**Turn:** ${game.players[game.currentPlayerIndex]?.username || 'n/a'}` : null,
+            game.state === 'PEGGING' ? `**Turn:** ${turnDisplay}` : null,
         ].filter(Boolean).join('\n'));
 
     embed.setImage('attachment://cribbage-pegboard.png');
@@ -2064,7 +2083,12 @@ client.on('interactionCreate', async interaction => {
                 `Count: **${cribGame.runningTotal}**`,
                 ...(result.events || []),
             ];
-            await upsertCribbageTableMessage(interaction.channel, gameChannelId, buildCribbageStatusPayload(cribGame, publicLines));
+            await upsertCribbageTableMessage(
+                interaction.channel,
+                gameChannelId,
+                buildCribbageStatusPayload(cribGame, publicLines),
+                { forceRepost: true }
+            );
 
             if (cribGame.isPeggingFinished()) {
                 const handResult = await cribGame.finalizeHandAndAdvance();
@@ -2088,7 +2112,12 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
             }
             await interaction.update({ content: '✅ You called **Go**.', components: [] });
-            await upsertCribbageTableMessage(interaction.channel, gameChannelId, buildCribbageStatusPayload(cribGame, result.events));
+            await upsertCribbageTableMessage(
+                interaction.channel,
+                gameChannelId,
+                buildCribbageStatusPayload(cribGame, result.events),
+                { forceRepost: true }
+            );
 
             if (cribGame.isPeggingFinished()) {
                 const handResult = await cribGame.finalizeHandAndAdvance();

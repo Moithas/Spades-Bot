@@ -536,7 +536,7 @@ export default class CribbageManager {
             events.push('Count reached 31, new count starts.');
             this.resetPegSegmentFrom(playerIndex);
         } else {
-            this.advancePegTurnAfterPlay();
+            this.advancePegTurnAfterPlay(events);
         }
 
         const finished = this.isPeggingFinished();
@@ -561,7 +561,7 @@ export default class CribbageManager {
 
         this.passedPlayers.add(playerIndex);
         const events = [`${player.username} says "Go".`];
-        this.advancePegTurnAfterGo();
+        this.advancePegTurnAfterGo(events);
         const finished = this.isPeggingFinished();
         if (finished) {
             const finalEvent = this.finishPeggingIfComplete();
@@ -585,30 +585,37 @@ export default class CribbageManager {
         return fromIndex;
     }
 
-    advancePegTurnAfterPlay() {
+    advancePegTurnAfterPlay(events = []) {
         const nextIndex = this.nextPlayerIndex(this.currentPlayerIndex);
-        const found = this.findNextEligiblePegPlayer(nextIndex);
-        if (found === -1) {
-            if (this.lastCardPlayerIndex !== null && this.runningTotal !== 31) {
-                this.awardPoints(this.lastCardPlayerIndex, 1);
-            }
-            this.resetPegSegmentFrom(this.lastCardPlayerIndex ?? this.currentPlayerIndex);
-            return;
-        }
-        this.currentPlayerIndex = found;
+        this.resolvePegTurnFrom(nextIndex, this.currentPlayerIndex, events);
     }
 
-    advancePegTurnAfterGo() {
+    advancePegTurnAfterGo(events = []) {
         const nextIndex = this.nextPlayerIndex(this.currentPlayerIndex);
-        const found = this.findNextEligiblePegPlayer(nextIndex);
-        if (found === -1) {
-            if (this.lastCardPlayerIndex !== null && this.runningTotal !== 31) {
-                this.awardPoints(this.lastCardPlayerIndex, 1);
+        this.resolvePegTurnFrom(nextIndex, this.currentPlayerIndex, events);
+    }
+
+    resolvePegTurnFrom(startIndex, fallbackIndex, events = []) {
+        for (let step = 0; step < this.players.length; step++) {
+            const idx = (startIndex + step) % this.players.length;
+            const player = this.players[idx];
+            if (!player || player.hand.length === 0 || this.passedPlayers.has(idx)) continue;
+
+            if (hasAnyLegalPegPlay(player.hand, this.runningTotal)) {
+                this.currentPlayerIndex = idx;
+                return;
             }
-            this.resetPegSegmentFrom(this.lastCardPlayerIndex ?? this.currentPlayerIndex);
-            return;
+
+            this.passedPlayers.add(idx);
+            events.push(`${player.username} has no legal play and says "Go".`);
         }
-        this.currentPlayerIndex = found;
+
+        if (this.lastCardPlayerIndex !== null && this.runningTotal !== 31) {
+            this.awardPoints(this.lastCardPlayerIndex, 1);
+            events.push(`${this.players[this.lastCardPlayerIndex].username} scores 1 for last card.`);
+        }
+        events.push('No legal plays remain. Count resets to 0.');
+        this.resetPegSegmentFrom(this.lastCardPlayerIndex ?? fallbackIndex);
     }
 
     findNextEligiblePegPlayer(startIndex) {
