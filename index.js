@@ -1082,6 +1082,11 @@ client.on('ready', async () => {
                     }
                     if (wrapped.type === 'cribbage') {
                         const publicAnnounce = async (message) => {
+                            if (message && typeof message === 'object' && message.type === 'crib_scoring_breakdown') {
+                                const embed = createCribbageCribBreakdownEmbed(message.cribSummary || {});
+                                await retryDiscordCall(() => channel.send({ embeds: [embed] }));
+                                return;
+                            }
                             const payload = typeof message === 'string'
                                 ? { content: message, components: createCribbageActionComponents(channelId) }
                                 : { ...(message || {}) };
@@ -1215,6 +1220,30 @@ const formatCribbageCard = (card) => {
     return `${rank}${suit}`;
 };
 
+const createCribbageCribBreakdownEmbed = (cribSummary) => {
+    const breakdown = cribSummary?.breakdown || {};
+    const starterLine = cribSummary?.starter ? `\nStarter: **${cribSummary.starter}**` : '';
+    const cribCards = Array.isArray(cribSummary?.cards) && cribSummary.cards.length > 0
+        ? cribSummary.cards.join(' ')
+        : 'None';
+    const breakdownLines = [
+        `Fifteens: **${breakdown.fifteens || 0}**`,
+        `Pairs: **${breakdown.pairs || 0}**`,
+        `Runs: **${breakdown.runs || 0}**`,
+        `Flush: **${breakdown.flush || 0}**`,
+        `Nobs: **${breakdown.nobs || 0}**`,
+    ];
+    return new EmbedBuilder()
+        .setColor('#8E44AD')
+        .setTitle('🗃️ Crib Scoring Breakdown')
+        .setDescription(`Dealer: **${cribSummary?.dealerName || 'Unknown'}**${starterLine}`)
+        .addFields(
+            { name: 'Crib Cards', value: cribCards, inline: false },
+            { name: 'Points', value: breakdownLines.join('\n'), inline: false },
+            { name: 'Total Crib Score', value: `**${cribSummary?.total || 0}**`, inline: false }
+        );
+};
+
 const getCribbageDeckTheme = (game) => {
     if (!game || !game.players) return 'classic';
     const host = game.players.find(p => p.id === game.hostId || p.discordId === game.hostId);
@@ -1339,7 +1368,14 @@ const showCribbageHandEphemeral = async (interaction, game, playerId, note = nul
     }
 
     try {
-        const reply = await interaction.reply(payload);
+        let reply;
+        if (interaction.deferred) {
+            reply = await interaction.editReply(payload);
+        } else if (interaction.replied) {
+            reply = await interaction.followUp(payload);
+        } else {
+            reply = await interaction.reply(payload);
+        }
         cribbageHandMessageIds.set(key, reply.id);
         return reply;
     } catch (err) {
@@ -1375,7 +1411,12 @@ const refreshCribbageHandEphemeral = async (interaction, game, playerId, note = 
             cribbageHandMessageIds.delete(key);
         }
 
-        const reply = await interaction.followUp(payload);
+        let reply;
+        if (interaction.deferred) {
+            reply = await interaction.editReply(payload);
+        } else {
+            reply = await interaction.followUp(payload);
+        }
         cribbageHandMessageIds.set(key, reply.id);
     } catch (err) {
         logger.warn('⚠️ Failed to auto-refresh private cribbage hand message:', err?.message || err);
@@ -1530,26 +1571,67 @@ const handleCribbageCommand = async (interaction) => {
     const channelId = interaction.channelId;
     const game = activeCribbageGames.get(channelId);
     const user = interaction.user;
+    const respond = async (payload) => {
+        if (interaction.deferred || interaction.replied) {
+            return interaction.followUp(payload);
+        }
+        return interaction.reply(payload);
+    };
+
+    if (['start', 'join', 'addai', 'end', 'status', 'hand', 'discard', 'play', 'go'].includes(subcommand)) {
+        if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferReply({ ephemeral: true });
+        }
+    }
 
     if (subcommand === 'start') {
         if (game) {
-            return interaction.reply({ content: '❌ A Cribbage game is already active in this channel.', ephemeral: true });
+            return respond({ content: '❌ A Cribbage game is already active in this channel.', ephemeral: true });
         }
         if (activeGames.has(channelId)) {
-            return interaction.reply({ content: '❌ A Spades game is active in this channel. End it before starting Cribbage.', ephemeral: true });
+            return respond({ content: '❌ A Spades game is active in this channel. End it before starting Cribbage.', ephemeral: true });
+        }
+
+        let gameChannel = interaction.channel;
+        let threadStartMessage = null;
+        let gameChannelId = channelId;
+
+        if (!interaction.channel?.isThread?.()) {
+            threadStartMessage = await respond({
+                content: '🎮 Creating a dedicated Cribbage thread...',
+                ephemeral: true
+            });
+            try {
+                const thread = await threadStartMessage.startThread({
+                    name: `Cribbage - ${user.username}`,
+                    autoArchiveDuration: 60,
+                    reason: `Cribbage game started by ${user.username}`
+                });
+                gameChannel = thread;
+                gameChannelId = thread.id;
+            } catch (threadError) {
+                logger.warn('⚠️ Failed to create Cribbage thread; falling back to the current channel.', threadError?.message || threadError);
+                gameChannel = interaction.channel;
+                gameChannelId = interaction.channelId;
+            }
         }
 
         const gameMode = interaction.options.getString('mode') || 'classic2';
         const aiPlayers = interaction.options.getInteger('ai_players') || 0;
 
         const publicAnnounce = async (message) => {
+            if (message && typeof message === 'object' && message.type === 'crib_scoring_breakdown') {
+                const embed = createCribbageCribBreakdownEmbed(message.cribSummary || {});
+                await retryDiscordCall(() => gameChannel.send({ embeds: [embed] }));
+                return;
+            }
             const payload = typeof message === 'string'
-                ? { content: message, components: createCribbageActionComponents(channelId) }
+                ? { content: message, components: createCribbageActionComponents(gameChannelId) }
                 : { ...(message || {}) };
             if (!payload.components) {
-                payload.components = createCribbageActionComponents(channelId);
+                payload.components = createCribbageActionComponents(gameChannelId);
             }
-            await upsertCribbageTableMessage(interaction.channel, channelId, payload);
+            await upsertCribbageTableMessage(gameChannel, gameChannelId, payload);
         };
         const privatePrompt = async (playerId, message) => {
             const target = await client.users.fetch(playerId).catch(() => null);
@@ -1557,11 +1639,11 @@ const handleCribbageCommand = async (interaction) => {
         };
 
         const newGame = new CribbageManager(publicAnnounce, privatePrompt, { gameMode, targetScore: 121 });
-        newGame.channelId = channelId;
+        newGame.channelId = gameChannelId;
         const hostPreferences = await getUserPreferences(user.id);
         const addHost = newGame.addPlayer({ id: user.id, username: user.username, preferences: hostPreferences });
         if (addHost.error) {
-            return interaction.reply({ content: `❌ ${addHost.error}`, ephemeral: true });
+            return respond({ content: `❌ ${addHost.error}`, ephemeral: true });
         }
 
         for (let i = 0; i < aiPlayers; i++) {
@@ -1569,22 +1651,29 @@ const handleCribbageCommand = async (interaction) => {
             if (added.error) break;
         }
 
-        activeCribbageGames.set(channelId, newGame);
+        activeCribbageGames.set(gameChannelId, newGame);
         persistCribbageGame(newGame);
-        await interaction.reply({
-            content: '✅ Cribbage lobby created. Updating the table panel…',
-            ephemeral: true
-        });
+
+        if (threadStartMessage) {
+            await interaction.editReply({
+                content: '✅ Cribbage lobby created. Updating the table panel…'
+            });
+        } else {
+            await interaction.reply({
+                content: '✅ Cribbage lobby created. Updating the table panel…',
+                ephemeral: true
+            });
+        }
         await upsertCribbageTableMessage(
-            interaction.channel,
-            channelId,
+            gameChannel,
+            gameChannelId,
             buildCribbageLobbyPayload(
                 newGame,
                 '🎴 Lobby created. Use buttons below to join/add AI. View Hand is private to each player.'
             )
         );
 
-        const autoStartErr = await startCribbageIfLobbyFull(newGame, interaction.channel);
+        const autoStartErr = await startCribbageIfLobbyFull(newGame, gameChannel);
         if (autoStartErr) {
             return interaction.followUp({ content: `⚠️ ${autoStartErr}` });
         }
@@ -2031,6 +2120,7 @@ client.on('interactionCreate', async interaction => {
                 });
             }
             clearCribbageDiscardSelection(gameChannelId, interaction.user.id);
+            await interaction.deferReply({ ephemeral: true });
             await showCribbageHandEphemeral(interaction, cribGame, interaction.user.id);
             return;
         }
@@ -2041,9 +2131,10 @@ client.on('interactionCreate', async interaction => {
             if (!cribGame) {
                 return interaction.reply({ content: '❌ No active Cribbage game found.', ephemeral: true });
             }
+            await interaction.deferReply({ ephemeral: true });
             const payload = buildCribbageStatusPayload(cribGame, [], false);
             payload.ephemeral = true;
-            return interaction.reply(payload);
+            return interaction.editReply(payload);
         }
 
         // ----------------------------------------------------
@@ -3066,6 +3157,11 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: '❌ You are not in this game.', ephemeral: true });
             }
 
+            const playerPrefs = player.preferences || {};
+            const deckTheme = game.options?.deckTheme || 'classic';
+
+            await interaction.deferReply({ ephemeral: true });
+
             // Show hand with bidding or playing buttons
             try {
                 let messageContent = `🃏 **Your Spades Hand**`;
@@ -3125,11 +3221,11 @@ client.on('interactionCreate', async interaction => {
                             components.push(blindNilRow);
                         } else {
                             // Show hand with bidding buttons
-                            const handImageBuffer = renderHand(player.hand, player.preferences.colorBlindMode, game.options.deckTheme);
+                            const handImageBuffer = renderHand(player.hand, !!playerPrefs.colorBlindMode, deckTheme);
                             handAttachment = new AttachmentBuilder(handImageBuffer, { name: 'hand.png' });
                             
                             // Calculate bid suggestion if enabled
-                            if (player.preferences.biddingSuggestions) {
+                            if (playerPrefs.biddingSuggestions) {
                                 const suggestion = game.calculateBidSuggestion(player);
                                 
                                 messageContent += '\n\n**🦅 Mr. Easy Suggests:**\n';
@@ -3153,7 +3249,7 @@ client.on('interactionCreate', async interaction => {
                             }
                             
                             // Calculate hand strength if enabled
-                            if (player.preferences.handStrengthIndicator) {
+                            if (playerPrefs.handStrengthIndicator) {
                                 const strength = game.calculateHandStrength(player);
                                 
                                 messageContent += '\n\n**💪 Hand Strength:**\n';
@@ -3187,22 +3283,22 @@ client.on('interactionCreate', async interaction => {
                         }
                     } else {
                         // Already bid, just show the hand
-                        const handImageBuffer = renderHand(player.hand, player.preferences.colorBlindMode, game.options.deckTheme);
+                        const handImageBuffer = renderHand(player.hand, !!playerPrefs.colorBlindMode, deckTheme);
                         handAttachment = new AttachmentBuilder(handImageBuffer, { name: 'hand.png' });
                     }
                 } else if (game.state === 'PLAYING') {
                     // Show hand with card play buttons
-                    const handImageBuffer = renderHand(player.hand, player.preferences.colorBlindMode, game.options.deckTheme);
+                    const handImageBuffer = renderHand(player.hand, !!playerPrefs.colorBlindMode, deckTheme);
                     handAttachment = new AttachmentBuilder(handImageBuffer, { name: 'hand.png' });
                     
                     // Show hand strength if enabled (during play)
-                    if (player.preferences.handStrengthIndicator && player.hand.length > 0) {
+                    if (playerPrefs.handStrengthIndicator && player.hand.length > 0) {
                         const strength = game.calculateHandStrength(player);
                         messageContent += `\n\n**💪 Hand Strength:** ${strength.rating} (${strength.totalStrength} pts)`;
                     }
                     
                     // Show recommended card play if enabled
-                    if (player.preferences.recommendedCardPlay && player.hand.length > 0) {
+                    if (playerPrefs.recommendedCardPlay && player.hand.length > 0) {
                         const suggestion = game.calculateCardPlaySuggestion(player);
                         
                         if (suggestion) {
@@ -3228,7 +3324,7 @@ client.on('interactionCreate', async interaction => {
                     components.push(...cardComponents);
                 } else {
                     // Any other state, just show the hand
-                    const handImageBuffer = renderHand(player.hand, player.preferences.colorBlindMode, game.options.deckTheme);
+                    const handImageBuffer = renderHand(player.hand, !!playerPrefs.colorBlindMode, deckTheme);
                     handAttachment = new AttachmentBuilder(handImageBuffer, { name: 'hand.png' });
                 }
 
@@ -3241,7 +3337,7 @@ client.on('interactionCreate', async interaction => {
                     embed.setImage('attachment://' + handAttachment.name);
                 }
 
-                await interaction.reply({
+                await interaction.editReply({
                     embeds: [embed],
                     files: handAttachment ? [handAttachment] : [],
                     components: components,
@@ -3249,7 +3345,7 @@ client.on('interactionCreate', async interaction => {
                 });
             } catch (err) {
                 logger.error('❌ Failed to show hand via button:', err);
-                return interaction.reply({ content: '❌ Failed to display your hand.', ephemeral: true });
+                return interaction.editReply({ content: '❌ Failed to display your hand.', ephemeral: true });
             }
 
             return;
@@ -3266,6 +3362,8 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: '❌ No active game found.', ephemeral: true });
             }
 
+            await interaction.deferReply({ ephemeral: true });
+
             try {
                 // Handle Lobby State
                 if (game.state === 'LOBBY') {
@@ -3281,7 +3379,7 @@ client.on('interactionCreate', async interaction => {
                             { name: 'Spectators', value: spectatorDisplay, inline: false }
                         );
                         
-                    return interaction.reply({ embeds: [lobbyEmbed], ephemeral: true });
+                    return interaction.editReply({ embeds: [lobbyEmbed], ephemeral: true });
                 }
                 
                 // Check if cutthroat mode
@@ -3318,7 +3416,7 @@ client.on('interactionCreate', async interaction => {
                             { name: 'Spectators', value: spectatorDisplay, inline: false }
                         );
                     
-                    return interaction.reply({ embeds: [gameStatusEmbed], ephemeral: true });
+                    return interaction.editReply({ embeds: [gameStatusEmbed], ephemeral: true });
                 }
                 
                 // Classic mode: Organize players by team
@@ -3378,10 +3476,10 @@ client.on('interactionCreate', async interaction => {
                         { name: 'Spectators', value: spectatorDisplay, inline: false }
                     );
                 
-                return interaction.reply({ embeds: [gameStatusEmbed], ephemeral: true });
+                return interaction.editReply({ embeds: [gameStatusEmbed], ephemeral: true });
             } catch (error) {
                 logger.error('❌ Error in view status button:', error);
-                return interaction.reply({ content: '❌ Failed to display game status.', ephemeral: true });
+                return interaction.editReply({ content: '❌ Failed to display game status.', ephemeral: true });
             }
 
             return;

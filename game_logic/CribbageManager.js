@@ -664,7 +664,14 @@ export default class CribbageManager {
             this.awardPoints(this.dealerIndex, cribScore.total);
         }
         events.push(`🗃️ ${dealer.username}'s crib scores **${cribScore.total}**`);
-        return events;
+        const cribSummary = {
+            dealerName: dealer.username,
+            starter: this.starterCard ? cardToText(this.starterCard) : null,
+            cards: this.crib.map(cardToText),
+            total: cribScore.total,
+            breakdown: cribScore.breakdown,
+        };
+        return { events, cribSummary };
     }
 
     checkGameOver() {
@@ -690,7 +697,7 @@ export default class CribbageManager {
 
     async finalizeHandAndAdvance() {
         this.state = 'SHOW';
-        const scoringEvents = this.scoreHandsAndCrib();
+        const { events: scoringEvents, cribSummary } = this.scoreHandsAndCrib();
         const gameOver = this.checkGameOver();
 
         if (this.publicAnnounce) {
@@ -702,6 +709,13 @@ export default class CribbageManager {
                 this.getStatusSummary(),
             ].join('\n');
             await this.publicAnnounce(message);
+
+            if (cribSummary) {
+                await this.publicAnnounce({
+                    type: 'crib_scoring_breakdown',
+                    cribSummary,
+                });
+            }
         }
 
         if (gameOver.over) {
@@ -710,13 +724,13 @@ export default class CribbageManager {
             if (this.publicAnnounce) {
                 await this.publicAnnounce(`🏁 **Game Over** — ${gameOver.winnerText}`);
             }
-            return { finished: true };
+            return { finished: true, cribSummary };
         }
 
         this.dealerIndex = this.nextPlayerIndex(this.dealerIndex);
         this.handNumber += 1;
         await this.startRound();
-        return { finished: false };
+        return { finished: false, cribSummary };
     }
 
     chooseAIDiscardCards(playerIndex) {
