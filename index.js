@@ -1250,8 +1250,12 @@ const createCribbageScoringBreakdownPayload = async (game, handSummaries = [], c
     const rows = [];
     const summarySegments = [];
     const starterCard = cribSummary?.starterRaw || null;
-    const starterBuffer = starterCard ? renderTrickCards([starterCard], deckTheme) : null;
-    const starterImage = starterBuffer ? await loadImage(starterBuffer) : null;
+    if (starterCard) {
+        rows.push({
+            label: `Cut Card — ${cribSummary?.starter || formatCribbageCard(starterCard)}`,
+            buffer: renderTrickCards([starterCard], deckTheme),
+        });
+    }
 
     for (const hand of handSummaries) {
         const sortedCards = sortCribbageHandForDisplay(hand.cards || []);
@@ -1277,8 +1281,8 @@ const createCribbageScoringBreakdownPayload = async (game, handSummaries = [], c
     }
 
     const rowGap = 18;
-    const headerHeight = starterImage ? 120 : 48;
-    const labelHeight = 24;
+    const headerHeight = 48;
+    const labelHeight = 22;
     const width = Math.max(700, ...loadedRows.map(r => r.image.width + 40));
     const height = loadedRows.reduce((sum, r) => sum + labelHeight + r.image.height + rowGap, headerHeight);
     const canvas = createCanvas(width, height);
@@ -1289,19 +1293,13 @@ const createCribbageScoringBreakdownPayload = async (game, handSummaries = [], c
     ctx.fillStyle = '#E6EDF3';
     ctx.font = 'bold 24px Sans';
     ctx.fillText('Cribbage Scoring Breakdown', 20, 32);
-    if (starterImage) {
-        ctx.fillStyle = '#C9D1D9';
-        ctx.font = '16px Sans';
-        ctx.fillText(`Cut Card: ${cribSummary?.starter || 'Unknown'}`, 20, 56);
-        ctx.drawImage(starterImage, 20, 64);
-    }
 
     let y = headerHeight;
     for (const row of loadedRows) {
         ctx.fillStyle = '#C9D1D9';
         ctx.font = '18px Sans';
         ctx.fillText(row.label, 20, y);
-        y += 8;
+        y += labelHeight;
         ctx.drawImage(row.image, 20, y);
         y += row.image.height + rowGap;
     }
