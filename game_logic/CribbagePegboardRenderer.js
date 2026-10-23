@@ -40,16 +40,37 @@ const drawLane = (ctx, lane, laneY, trackLeft, trackRight, targetScore) => {
     }
 };
 
-const drawPeg = (ctx, score, color, laneY, trackLeft, trackRight, targetScore) => {
-    const clamped = clamp(score, 0, targetScore);
-    const x = trackLeft + (clamped / targetScore) * (trackRight - trackLeft);
+const drawPegPair = (ctx, score, color, laneY, trackLeft, trackRight, targetScore) => {
+    const trackWidth = trackRight - trackLeft;
+    const currentScore = clamp(score, 0, targetScore);
+    const currentX = trackLeft + (currentScore / targetScore) * trackWidth;
+
+    const trailingDistance = Math.min(18, Math.max(6, trackWidth * 0.04));
+    const previousScore = Math.max(0, currentScore - Math.min(10, Math.max(4, score > 0 ? score * 0.08 : 0)));
+    const previousX = trackLeft + (clamp(previousScore, 0, targetScore) / targetScore) * trackWidth;
+
     ctx.beginPath();
-    ctx.arc(x, laneY + 2, 9, 0, Math.PI * 2);
+    ctx.arc(previousX, laneY + 2, 6.5, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#1f2937';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(currentX, laneY + 2, 9, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = '#1f2937';
+    ctx.strokeStyle = '#111827';
     ctx.stroke();
+
+    const rearShift = Math.min(10, trailingDistance * 0.6);
+    const shadowX = Math.max(trackLeft, currentX - rearShift);
+    ctx.beginPath();
+    ctx.arc(shadowX, laneY + 2, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(17,24,39,0.18)';
+    ctx.fill();
 };
 
 /**
@@ -123,7 +144,7 @@ export const renderCribbagePegboard = (game) => {
         ctx.fillText(`${entry.score}`, 220, laneY + 8);
         ctx.font = 'bold 18px Sans';
 
-        drawPeg(ctx, entry.score, entry.color, laneY, trackLeft, trackRight, game.targetScore);
+        drawPegPair(ctx, entry.score, entry.color, laneY, trackLeft, trackRight, game.targetScore);
     });
 
     return canvas.toBuffer('image/png');

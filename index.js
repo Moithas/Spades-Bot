@@ -928,6 +928,7 @@ client.on('entitlementDelete', (entitlement) => {
 const activeGames = new Map();
 const activeCribbageGames = new Map();
 const cribbageDiscardSelections = new Map();
+const cribbageHandMessageIds = new Map();
 const cribbageTableMessageIds = new Map();
 
 const persistCribbageGame = (game) => {
@@ -941,6 +942,22 @@ const persistCribbageGame = (game) => {
 
 const clearCribbageDiscardSelection = (channelId, userId) => {
     cribbageDiscardSelections.delete(`${channelId}:${userId}`);
+};
+
+const clearCribbageHandMessage = async (channelId, userId) => {
+    const key = `${channelId}:${userId}`;
+    const messageId = cribbageHandMessageIds.get(key);
+    if (!messageId) return;
+    cribbageHandMessageIds.delete(key);
+
+    try {
+        const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
+        if (!channel?.messages) return;
+        const message = await channel.messages.fetch(messageId).catch(() => null);
+        if (message) await message.delete().catch(() => null);
+    } catch (err) {
+        logger.warn('⚠️ Failed to remove stale cribbage private hand message:', err?.message || err);
+    }
 };
 
 const upsertCribbageTableMessage = async (channel, channelId, payload) => {
@@ -1294,14 +1311,72 @@ const buildCribbageHandPayload = (game, player, channelId, selectedCodes = []) =
     };
 };
 
+const showCribbageHandEphemeral = async (interaction, game, playerId, note = null) => {
+    const player = game.getPlayerById(playerId);
+    if (!player) return;
+
+    const channelId = game.channelId || interaction.channelId;
+    const key = `${channelId}:${playerId}`;
+    const payload = buildCribbageHandPayload(game, player, channelId);
+    if (note) payload.content = `${note}\n\n${payload.content}`;
+    payload.ephemeral = true;
+
+    const existingMessageId = cribbageHandMessageIds.get(key);
+    if (existingMessageId && interaction.channel) {
+        try {
+            const existingMessage = await interaction.channel.messages.fetch(existingMessageId).catch(() => null);
+            if (existingMessage) {
+                await existingMessage.edit(payload).catch(async () => {
+                    await existingMessage.delete().catch(() => null);
+                    cribbageHandMessageIds.delete(key);
+                });
+                return existingMessage;
+            }
+        } catch (err) {
+            logger.warn('⚠️ Failed to edit existing cribbage hand message; sending a fresh one instead.', err?.message || err);
+        }
+        cribbageHandMessageIds.delete(key);
+    }
+
+    try {
+        const reply = await interaction.reply(payload);
+        cribbageHandMessageIds.set(key, reply.id);
+        return reply;
+    } catch (err) {
+        logger.warn('⚠️ Failed to send cribbage private hand message:', err?.message || err);
+        return null;
+    }
+};
+
 const refreshCribbageHandEphemeral = async (interaction, game, playerId, note = null) => {
     try {
         const player = game.getPlayerById(playerId);
         if (!player) return;
-        const payload = buildCribbageHandPayload(game, player, game.channelId || interaction.channelId);
+        const channelId = game.channelId || interaction.channelId;
+        const key = `${channelId}:${playerId}`;
+        const payload = buildCribbageHandPayload(game, player, channelId);
         if (note) payload.content = `${note}\n\n${payload.content}`;
         payload.ephemeral = true;
-        await interaction.followUp(payload);
+
+        const existingMessageId = cribbageHandMessageIds.get(key);
+        if (existingMessageId && interaction.channel) {
+            try {
+                const existingMessage = await interaction.channel.messages.fetch(existingMessageId).catch(() => null);
+                if (existingMessage) {
+                    await existingMessage.edit(payload).catch(async () => {
+                        await existingMessage.delete().catch(() => null);
+                        cribbageHandMessageIds.delete(key);
+                    });
+                    return;
+                }
+            } catch (err) {
+                logger.warn('⚠️ Failed to edit existing cribbage hand message; falling back to a fresh message.', err?.message || err);
+            }
+            cribbageHandMessageIds.delete(key);
+        }
+
+        const reply = await interaction.followUp(payload);
+        cribbageHandMessageIds.set(key, reply.id);
     } catch (err) {
         logger.warn('⚠️ Failed to auto-refresh private cribbage hand message:', err?.message || err);
     }
@@ -1578,6 +1653,12 @@ const handleCribbageCommand = async (interaction) => {
         for (const key of cribbageDiscardSelections.keys()) {
             if (key.startsWith(`${channelId}:`)) cribbageDiscardSelections.delete(key);
         }
+        for (const key of cribbageHandMessageIds.keys()) {
+            if (key.startsWith(`${channelId}:`)) {
+                const [, playerId] = key.split(':');
+                await clearCribbageHandMessage(channelId, playerId).catch(() => null);
+            }
+        }
         gameStateStore.remove(channelId);
         return interaction.reply({ content: '🛑 Cribbage game ended.', ephemeral: true });
     }
@@ -1595,9 +1676,8 @@ const handleCribbageCommand = async (interaction) => {
 
     if (subcommand === 'hand') {
         clearCribbageDiscardSelection(channelId, user.id);
-        const payload = buildCribbageHandPayload(game, player, channelId);
-        payload.ephemeral = true;
-        return interaction.reply(payload);
+        await showCribbageHandEphemeral(interaction, game, user.id);
+        return;
     }
 
     if (subcommand === 'discard') {
@@ -1800,6 +1880,12 @@ client.on('interactionCreate', async interaction => {
             for (const key of cribbageDiscardSelections.keys()) {
                 if (key.startsWith(`${gameChannelId}:`)) cribbageDiscardSelections.delete(key);
             }
+            for (const key of cribbageHandMessageIds.keys()) {
+                if (key.startsWith(`${gameChannelId}:`)) {
+                    const [, playerId] = key.split(':');
+                    await clearCribbageHandMessage(gameChannelId, playerId).catch(() => null);
+                }
+            }
             return interaction.update({
                 content: '🛑 Cribbage game ended by host.',
                 embeds: [],
@@ -1945,9 +2031,8 @@ client.on('interactionCreate', async interaction => {
                 });
             }
             clearCribbageDiscardSelection(gameChannelId, interaction.user.id);
-            const payload = buildCribbageHandPayload(cribGame, player, gameChannelId);
-            payload.ephemeral = true;
-            return interaction.reply(payload);
+            await showCribbageHandEphemeral(interaction, cribGame, interaction.user.id);
+            return;
         }
 
         if (interaction.isButton() && interaction.customId.startsWith('crib_view_status:')) {
