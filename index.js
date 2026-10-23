@@ -32,6 +32,7 @@ import { getGuildSettings, updateGuildSettings } from './guildSettings.js';
 import { getBotSettings, updateBotSettings, postBotAnnouncement } from './botSettings.js';
 import { renderHand, renderSingleCard, renderTrickCards, renderCardBacks } from './game_logic/CardRenderer.js';
 import { AttachmentBuilder } from 'discord.js'; 
+import { createCanvas, loadImage } from 'canvas';
 import { playerStats } from './stats/PlayerStats.js';
 import { getUserPreferences, updateUserPreferences, getDefaultPreferences } from './userPreferences.js';
 import logger, { safeDelete } from './logger.js';
@@ -880,7 +881,7 @@ const commands = [
         )
         .addSubcommand(subcommand =>
             subcommand.setName('play')
-                .setDescription('Play a card during pegging (example: "5H").')
+                .setDescription('Play a card during playing (example: "5H").')
                 .addStringOption(opt =>
                     opt.setName('card')
                         .setDescription('Card code to play.')
@@ -889,7 +890,7 @@ const commands = [
         )
         .addSubcommand(subcommand =>
             subcommand.setName('go')
-                .setDescription('Say "Go" during pegging when you cannot play.')
+                .setDescription('Say "Go" during playing when you cannot play.')
         )
         .addSubcommand(subcommand =>
             subcommand.setName('status')
@@ -1088,9 +1089,14 @@ client.on('ready', async () => {
                     }
                     if (wrapped.type === 'cribbage') {
                         const publicAnnounce = async (message) => {
-                            if (message && typeof message === 'object' && message.type === 'crib_scoring_breakdown') {
-                                const embed = createCribbageCribBreakdownEmbed(message.cribSummary || {});
-                                await retryDiscordCall(() => channel.send({ embeds: [embed] }));
+                            if (message && typeof message === 'object' && message.type === 'scoring_breakdown') {
+                                const scoringGame = activeCribbageGames.get(channelId) || { players: [], handNumber: 0 };
+                                const payload = await createCribbageScoringBreakdownPayload(
+                                    scoringGame,
+                                    message.handSummaries || [],
+                                    message.cribSummary || {}
+                                );
+                                await retryDiscordCall(() => channel.send(payload));
                                 return;
                             }
                             const payload = typeof message === 'string'
@@ -1235,28 +1241,68 @@ const sortCribbageHandForDisplay = (cards = []) => {
     });
 };
 
-const createCribbageCribBreakdownEmbed = (cribSummary) => {
-    const breakdown = cribSummary?.breakdown || {};
+const formatCribbageBreakdown = (breakdown = {}) => {
+    return `15s ${breakdown.fifteens || 0} • Pairs ${breakdown.pairs || 0} • Runs ${breakdown.runs || 0} • Flush ${breakdown.flush || 0} • Nobs ${breakdown.nobs || 0}`;
+};
+
+const createCribbageScoringBreakdownPayload = async (game, handSummaries = [], cribSummary = {}) => {
+    const deckTheme = getCribbageDeckTheme(game);
+    const rows = [];
+
+    for (const hand of handSummaries) {
+        const sortedCards = sortCribbageHandForDisplay(hand.cards || []);
+        const rowBuffer = renderTrickCards(sortedCards, deckTheme);
+        rows.push({
+            label: `${hand.playerName} — ${hand.total} pts (${formatCribbageBreakdown(hand.breakdown)})`,
+            buffer: rowBuffer,
+        });
+    }
+
+    const cribCards = sortCribbageHandForDisplay(cribSummary.rawCards || []);
+    rows.push({
+        label: `Crib (${cribSummary.dealerName || 'Dealer'}) — ${cribSummary.total || 0} pts (${formatCribbageBreakdown(cribSummary.breakdown)})`,
+        buffer: renderTrickCards(cribCards, deckTheme),
+    });
+
+    const loadedRows = [];
+    for (const row of rows) {
+        const image = await loadImage(row.buffer);
+        loadedRows.push({ ...row, image });
+    }
+
+    const rowGap = 18;
+    const headerHeight = 48;
+    const labelHeight = 24;
+    const width = Math.max(700, ...loadedRows.map(r => r.image.width + 40));
+    const height = loadedRows.reduce((sum, r) => sum + labelHeight + r.image.height + rowGap, headerHeight);
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#10141E';
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = '#E6EDF3';
+    ctx.font = 'bold 24px Sans';
+    ctx.fillText('Cribbage Scoring Breakdown', 20, 32);
+
+    let y = headerHeight;
+    for (const row of loadedRows) {
+        ctx.fillStyle = '#C9D1D9';
+        ctx.font = '18px Sans';
+        ctx.fillText(row.label, 20, y);
+        y += 8;
+        ctx.drawImage(row.image, 20, y);
+        y += row.image.height + rowGap;
+    }
+
+    const attachment = new AttachmentBuilder(canvas.toBuffer('image/png'), { name: 'cribbage-scoring-breakdown.png' });
     const starterLine = cribSummary?.starter ? `\nStarter: **${cribSummary.starter}**` : '';
-    const cribCards = Array.isArray(cribSummary?.cards) && cribSummary.cards.length > 0
-        ? cribSummary.cards.join(' ')
-        : 'None';
-    const breakdownLines = [
-        `Fifteens: **${breakdown.fifteens || 0}**`,
-        `Pairs: **${breakdown.pairs || 0}**`,
-        `Runs: **${breakdown.runs || 0}**`,
-        `Flush: **${breakdown.flush || 0}**`,
-        `Nobs: **${breakdown.nobs || 0}**`,
-    ];
-    return new EmbedBuilder()
+    const embed = new EmbedBuilder()
         .setColor('#8E44AD')
-        .setTitle('🗃️ Crib Scoring Breakdown')
-        .setDescription(`Dealer: **${cribSummary?.dealerName || 'Unknown'}**${starterLine}`)
-        .addFields(
-            { name: 'Crib Cards', value: cribCards, inline: false },
-            { name: 'Points', value: breakdownLines.join('\n'), inline: false },
-            { name: 'Total Crib Score', value: `**${cribSummary?.total || 0}**`, inline: false }
-        );
+        .setTitle('🧮 Scoring Breakdown')
+        .setDescription(`Hand ${game.handNumber}${starterLine}`)
+        .setImage('attachment://cribbage-scoring-breakdown.png');
+
+    return { embeds: [embed], files: [attachment] };
 };
 
 const getCribbageDeckTheme = (game) => {
@@ -1340,7 +1386,7 @@ const buildCribbageHandPayload = (game, player, channelId, selectedCodes = []) =
         }
     } else if (game.state === 'PEGGING') {
         const legal = game.getLegalPegCards(player.id).map(formatCribbageCard);
-        content += `\n\nPeg count: **${game.runningTotal}**`;
+        content += `\n\nCurrent Points: **${game.runningTotal}**`;
         content += legal.length > 0 ? `\nLegal plays: ${legal.join(', ')}` : '\nNo legal plays. Press **Go**.';
         const isTurn = game.players[game.currentPlayerIndex]?.id === player.id;
         content += isTurn ? '\n🟢 It is your turn.' : `\n⏳ Waiting for **${game.players[game.currentPlayerIndex]?.username || 'next player'}**.`;
@@ -1516,7 +1562,7 @@ const createCribbageStatusEmbed = (game) => {
             `**State:** ${game.state}`,
             `**Hand:** ${game.handNumber}`,
             game.players.length > 0 ? `**Dealer:** ${game.players[game.dealerIndex].username}` : null,
-            game.state === 'PEGGING' ? `**Peg Count:** ${game.runningTotal}` : null,
+            game.state === 'PEGGING' ? `**Current Points:** ${game.runningTotal}` : null,
             game.state === 'PEGGING' ? `**Turn:** ${turnDisplay}` : null,
         ].filter(Boolean).join('\n'));
 
@@ -1641,9 +1687,14 @@ const handleCribbageCommand = async (interaction) => {
         const aiPlayers = interaction.options.getInteger('ai_players') || 0;
 
         const publicAnnounce = async (message) => {
-            if (message && typeof message === 'object' && message.type === 'crib_scoring_breakdown') {
-                const embed = createCribbageCribBreakdownEmbed(message.cribSummary || {});
-                await retryDiscordCall(() => gameChannel.send({ embeds: [embed] }));
+            if (message && typeof message === 'object' && message.type === 'scoring_breakdown') {
+                const scoringGame = activeCribbageGames.get(gameChannelId) || { players: [], handNumber: 0 };
+                const payload = await createCribbageScoringBreakdownPayload(
+                    scoringGame,
+                    message.handSummaries || [],
+                    message.cribSummary || {}
+                );
+                await retryDiscordCall(() => gameChannel.send(payload));
                 return;
             }
             const payload = typeof message === 'string'
@@ -1807,7 +1858,7 @@ const handleCribbageCommand = async (interaction) => {
             const heelsLine = cut.heelsAwarded ? `\n🂫 His heels: **${cut.heelsAwarded}** scores 2.` : '';
             await upsertCribbageTableMessage(interaction.channel, channelId, buildCribbageStatusPayload(game, [
                 `🔪 Starter cut: **${formatCribbageCard(cut.starterCard)}**${heelsLine}`,
-                'Pegging begins.',
+                'Round begins.',
             ]));
             await game.processAITurnsIfNeeded();
         }
@@ -2053,7 +2104,7 @@ client.on('interactionCreate', async interaction => {
                 const heelsLine = cut.heelsAwarded ? `\n🂫 His heels: **${cut.heelsAwarded}** scores 2.` : '';
                 await upsertCribbageTableMessage(interaction.channel, gameChannelId, buildCribbageStatusPayload(cribGame, [
                     `🔪 Starter cut: **${formatCribbageCard(cut.starterCard)}**${heelsLine}`,
-                    'Pegging begins.',
+                    'Round begins.',
                 ]));
                 await cribGame.processAITurnsIfNeeded();
             }

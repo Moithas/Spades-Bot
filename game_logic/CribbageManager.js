@@ -497,7 +497,7 @@ export default class CribbageManager {
     }
 
     playPegCard(playerId, cardCode) {
-        if (this.state !== 'PEGGING') return { error: 'Not in pegging phase.' };
+        if (this.state !== 'PEGGING') return { error: 'Not in playing phase.' };
 
         const playerIndex = this.players.findIndex(p => p.id === playerId || p.discordId === playerId);
         if (playerIndex === -1) return { error: 'You are not a player in this game.' };
@@ -549,7 +549,7 @@ export default class CribbageManager {
     }
 
     declareGo(playerId) {
-        if (this.state !== 'PEGGING') return { error: 'Not in pegging phase.' };
+        if (this.state !== 'PEGGING') return { error: 'Not in playing phase.' };
         const playerIndex = this.players.findIndex(p => p.id === playerId || p.discordId === playerId);
         if (playerIndex === -1) return { error: 'You are not a player in this game.' };
         if (playerIndex !== this.currentPlayerIndex) return { error: 'It is not your turn.' };
@@ -648,6 +648,7 @@ export default class CribbageManager {
     scoreHandsAndCrib() {
         const events = [];
         const orderedIndexes = [];
+        const handSummaries = [];
 
         let idx = this.nextPlayerIndex(this.dealerIndex);
         for (let i = 0; i < this.players.length; i++) {
@@ -663,6 +664,17 @@ export default class CribbageManager {
                 this.awardPoints(playerIndex, scored.total);
             }
             events.push(`🧮 ${player.username} hand scores **${scored.total}**`);
+            handSummaries.push({
+                playerId: player.id,
+                playerName: player.username,
+                cards: handCards.map(card => ({
+                    rankCode: card.rankCode,
+                    suitCode: card.suitCode,
+                    value: card.value,
+                })),
+                total: scored.total,
+                breakdown: scored.breakdown,
+            });
         }
 
         const dealer = this.players[this.dealerIndex];
@@ -673,12 +685,18 @@ export default class CribbageManager {
         events.push(`🗃️ ${dealer.username}'s crib scores **${cribScore.total}**`);
         const cribSummary = {
             dealerName: dealer.username,
+            dealerId: dealer.id,
             starter: this.starterCard ? cardToText(this.starterCard) : null,
             cards: this.crib.map(cardToText),
+            rawCards: this.crib.map(card => ({
+                rankCode: card.rankCode,
+                suitCode: card.suitCode,
+                value: card.value,
+            })),
             total: cribScore.total,
             breakdown: cribScore.breakdown,
         };
-        return { events, cribSummary };
+        return { events, cribSummary, handSummaries };
     }
 
     checkGameOver() {
@@ -704,7 +722,7 @@ export default class CribbageManager {
 
     async finalizeHandAndAdvance() {
         this.state = 'SHOW';
-        const { events: scoringEvents, cribSummary } = this.scoreHandsAndCrib();
+        const { events: scoringEvents, cribSummary, handSummaries } = this.scoreHandsAndCrib();
         const gameOver = this.checkGameOver();
 
         if (this.publicAnnounce) {
@@ -719,7 +737,8 @@ export default class CribbageManager {
 
             if (cribSummary) {
                 await this.publicAnnounce({
-                    type: 'crib_scoring_breakdown',
+                    type: 'scoring_breakdown',
+                    handSummaries,
                     cribSummary,
                 });
             }
@@ -731,13 +750,13 @@ export default class CribbageManager {
             if (this.publicAnnounce) {
                 await this.publicAnnounce(`🏁 **Game Over** — ${gameOver.winnerText}`);
             }
-            return { finished: true, cribSummary };
+            return { finished: true, handSummaries, cribSummary };
         }
 
         this.dealerIndex = this.nextPlayerIndex(this.dealerIndex);
         this.handNumber += 1;
         await this.startRound();
-        return { finished: false, cribSummary };
+        return { finished: false, handSummaries, cribSummary };
     }
 
     chooseAIDiscardCards(playerIndex) {
