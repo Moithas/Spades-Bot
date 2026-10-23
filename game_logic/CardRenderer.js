@@ -87,6 +87,19 @@ function _drawRoundedImage(ctx, img, x, y, w, h, radius) {
 // rank/suit pips stay readable).
 const IMAGE_HAND_HEIGHT = 170;
 const IMAGE_TRICK_HEIGHT = 140;
+const MAX_HAND_ATTACHMENT_WIDTH = 560;
+
+function _fitCanvasToMaxWidth(width, height, maxWidth = MAX_HAND_ATTACHMENT_WIDTH) {
+    const scale = width > maxWidth ? maxWidth / width : 1;
+    if (scale >= 1) {
+        return { width, height, scale: 1 };
+    }
+    return {
+        width: Math.max(1, Math.round(width * scale)),
+        height: Math.max(1, Math.round(height * scale)),
+        scale
+    };
+}
 
 /** Compose an overlapped hand from an artwork theme's card images. Large hands (e.g. the
  *  17-card cutthroat hand) wrap into multiple rows so each card — and its baked rank/suit
@@ -109,9 +122,12 @@ function _renderImageHand(sortedCards, deckTheme) {
     const rowWidth = (g) => cardWidth + overlap * Math.max(0, g.length - 1);
     const totalWidth = Math.max(cardWidth, ...groups.map(rowWidth));
     const totalHeight = groups.length * cardHeight + rowGap * (groups.length - 1);
+    const fit = _fitCanvasToMaxWidth(totalWidth, totalHeight);
 
-    const canvas = createCanvas(totalWidth, totalHeight);
+    const canvas = createCanvas(fit.width, fit.height);
     const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.scale(fit.scale, fit.scale);
     ctx.clearRect(0, 0, totalWidth, totalHeight);
     groups.forEach((g, ri) => {
         const y = ri * (cardHeight + rowGap);
@@ -121,6 +137,7 @@ function _renderImageHand(sortedCards, deckTheme) {
             if (img) _drawRoundedImage(ctx, img, x, y, cardWidth, cardHeight);
         });
     });
+    ctx.restore();
     return canvas.toBuffer('image/png');
 }
 
@@ -1630,10 +1647,13 @@ export function renderHand(cards, colorBlindMode = false, deckTheme = 'classic')
     const cardHeight = 143; // Was 168
     const overlap = 34; // Was 40, reduced by 15%
     const totalWidth = cardWidth + (overlap * (sortedCards.length - 1));
-    const canvas = createCanvas(totalWidth, cardHeight);
+    const fit = _fitCanvasToMaxWidth(totalWidth, cardHeight);
+    const canvas = createCanvas(fit.width, fit.height);
     const ctx = canvas.getContext('2d');
 
     // Transparent background
+    ctx.save();
+    ctx.scale(fit.scale, fit.scale);
     ctx.clearRect(0, 0, totalWidth, cardHeight);
 
     // Draw each card with overlap
@@ -1641,6 +1661,7 @@ export function renderHand(cards, colorBlindMode = false, deckTheme = 'classic')
         const x = index * overlap;
         drawCardOnCanvas(ctx, card.rankCode, card.suitCode, x, 0, colorBlindMode, deckTheme);
     });
+    ctx.restore();
 
     return canvas.toBuffer('image/png');
 }
