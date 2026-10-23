@@ -852,51 +852,6 @@ const commands = [
                 )
         )
         .addSubcommand(subcommand =>
-            subcommand.setName('join')
-                .setDescription('Join an open Cribbage lobby.')
-        )
-        .addSubcommand(subcommand =>
-            subcommand.setName('addai')
-                .setDescription('Host only: add AI players to an open Cribbage lobby.')
-                .addIntegerOption(opt =>
-                    opt.setName('count')
-                        .setDescription('How many AI players to add (default 1).')
-                        .setRequired(false)
-                        .setMinValue(1)
-                        .setMaxValue(3)
-                )
-        )
-        .addSubcommand(subcommand =>
-            subcommand.setName('hand')
-                .setDescription('View your current Cribbage hand.')
-        )
-        .addSubcommand(subcommand =>
-            subcommand.setName('discard')
-                .setDescription('Discard to the crib (example: "5H KS" or "7C").')
-                .addStringOption(opt =>
-                    opt.setName('cards')
-                        .setDescription('Space/comma-separated cards to discard.')
-                        .setRequired(true)
-                )
-        )
-        .addSubcommand(subcommand =>
-            subcommand.setName('play')
-                .setDescription('Play a card during playing (example: "5H").')
-                .addStringOption(opt =>
-                    opt.setName('card')
-                        .setDescription('Card code to play.')
-                        .setRequired(true)
-                )
-        )
-        .addSubcommand(subcommand =>
-            subcommand.setName('go')
-                .setDescription('Say "Go" during playing when you cannot play.')
-        )
-        .addSubcommand(subcommand =>
-            subcommand.setName('status')
-                .setDescription('Show current Cribbage game status.')
-        )
-        .addSubcommand(subcommand =>
             subcommand.setName('end')
                 .setDescription('Host only: end the active Cribbage game.')
         ),
