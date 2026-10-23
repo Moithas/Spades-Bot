@@ -1536,6 +1536,7 @@ const createCribbageStatusEmbed = (game) => {
             `**State:** ${game.state}`,
             `**Hand:** ${game.handNumber}`,
             game.players.length > 0 ? `**Dealer:** ${game.players[game.dealerIndex].username}` : null,
+            game.starterCard ? `**Cut Card:** ${formatCribbageCard(game.starterCard)}` : null,
             game.state === 'PEGGING' ? `**Current Points:** ${game.runningTotal}` : null,
             game.state === 'PEGGING' ? `**Turn:** ${turnDisplay}` : null,
         ].filter(Boolean).join('\n'));
