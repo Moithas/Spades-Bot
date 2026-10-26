@@ -325,18 +325,41 @@ export default class CribbageManager {
     }
 
     awardPoints(playerIndex, points) {
-        if (!Number.isFinite(points) || points <= 0) return;
+        if (!Number.isFinite(points) || points <= 0) return { over: false };
         const player = this.players[playerIndex];
-        if (!player) return;
+        if (!player) return { over: false };
 
         if (this.gameMode === 'partners4') {
             for (const teammate of this.players.filter(p => p.team === player.team)) {
                 teammate.score += points;
             }
-            return;
+            return this.checkGameOver();
         }
 
         player.score += points;
+        return this.checkGameOver();
+    }
+
+    getGameOverAnnouncement(gameOver) {
+        if (!gameOver?.over) return null;
+        const confetti = '🎉🎉🎉';
+        if (this.gameMode === 'partners4') {
+            const team1 = this.players.filter(p => p.team === 1).map(p => p.username).join(' + ');
+            const team2 = this.players.filter(p => p.team === 2).map(p => p.username).join(' + ');
+            return [
+                `${confetti} 🏆 **CRIBBAGE WINNER!** 🏆 ${confetti}`,
+                `**${gameOver.winnerText}**`,
+                `Team 1: **${team1 || 'n/a'}**`,
+                `Team 2: **${team2 || 'n/a'}**`,
+                `Final: **${gameOver.team1Score} - ${gameOver.team2Score}**`,
+            ].join('\n');
+        }
+
+        return [
+            `${confetti} 🏆 **CRIBBAGE WINNER!** 🏆 ${confetti}`,
+            `**${gameOver.winnerPlayerName || 'Winner'}** pegs out with **${gameOver.winnerScore}** points!`,
+            `Final: ${this.players.map(p => `**${p.username}** ${p.score}`).join(' • ')}`,
+        ].join('\n');
     }
 
     getHandTextForPlayer(playerId) {
@@ -415,7 +438,7 @@ export default class CribbageManager {
             const dealer = this.players[this.dealerIndex];
             await this.publicAnnounce(
                 `🎴 **Cribbage Hand ${this.handNumber}**\nDealer: **${dealer.username}**\n` +
-                `All players discard **${this.config.discardCount}** card(s) using \`/cribbage discard\`.`
+                `All players discard **${this.config.discardCount}** card(s) using the private hand buttons.`
             );
         }
         await this.processAITurnsIfNeeded();
@@ -469,10 +492,14 @@ export default class CribbageManager {
 
         const dealer = this.players[this.dealerIndex];
         if (this.starterCard.rankCode === 'J') {
-            this.awardPoints(this.dealerIndex, 2);
-            return { starterCard: this.starterCard, heelsAwarded: dealer.username };
+            const gameOver = this.awardPoints(this.dealerIndex, 2);
+            if (gameOver?.over) {
+                this.state = 'GAME_OVER';
+                this.isGameActive = false;
+            }
+            return { starterCard: this.starterCard, heelsAwarded: dealer.username, gameOver };
         }
-        return { starterCard: this.starterCard, heelsAwarded: null };
+        return { starterCard: this.starterCard, heelsAwarded: null, gameOver: { over: false } };
     }
 
     startPegging() {
@@ -523,29 +550,45 @@ export default class CribbageManager {
         this.lastCardPlayerIndex = playerIndex;
         this.passedPlayers.delete(playerIndex);
 
+        let gameOver = { over: false };
         if (pegResult.points > 0) {
-            this.awardPoints(playerIndex, pegResult.points);
+            gameOver = this.awardPoints(playerIndex, pegResult.points);
         }
 
         const events = [];
         if (pegResult.points > 0) {
             events.push(`${this.players[playerIndex].username} scores ${pegResult.points} (${pegResult.reasons.join(', ')})`);
         }
+        if (gameOver?.over) {
+            this.state = 'GAME_OVER';
+            this.isGameActive = false;
+            return { success: true, card, points: pegResult.points, events, finished: true, gameOver };
+        }
 
         if (this.runningTotal === 31) {
             events.push('Count reached 31, new count starts.');
             this.resetPegSegmentFrom(playerIndex);
         } else {
-            this.advancePegTurnAfterPlay(events);
+            gameOver = this.advancePegTurnAfterPlay(events) || gameOver;
+            if (gameOver?.over) {
+                this.state = 'GAME_OVER';
+                this.isGameActive = false;
+                return { success: true, card, points: pegResult.points, events, finished: true, gameOver };
+            }
         }
 
         const finished = this.isPeggingFinished();
         if (finished) {
-            const finalEvent = this.finishPeggingIfComplete();
-            if (finalEvent) events.push(finalEvent);
+            const finalResult = this.finishPeggingIfComplete();
+            if (finalResult?.event) events.push(finalResult.event);
+            if (finalResult?.gameOver?.over) {
+                this.state = 'GAME_OVER';
+                this.isGameActive = false;
+                return { success: true, card, points: pegResult.points, events, finished: true, gameOver: finalResult.gameOver };
+            }
         }
 
-        return { success: true, card, points: pegResult.points, events, finished: this.isPeggingFinished() };
+        return { success: true, card, points: pegResult.points, events, finished: this.isPeggingFinished(), gameOver: { over: false } };
     }
 
     declareGo(playerId) {
@@ -561,13 +604,23 @@ export default class CribbageManager {
 
         this.passedPlayers.add(playerIndex);
         const events = [`${player.username} says "Go".`];
-        this.advancePegTurnAfterGo(events);
+        const gameOver = this.advancePegTurnAfterGo(events) || { over: false };
+        if (gameOver?.over) {
+            this.state = 'GAME_OVER';
+            this.isGameActive = false;
+            return { success: true, events, finished: true, gameOver };
+        }
         const finished = this.isPeggingFinished();
         if (finished) {
-            const finalEvent = this.finishPeggingIfComplete();
-            if (finalEvent) events.push(finalEvent);
+            const finalResult = this.finishPeggingIfComplete();
+            if (finalResult?.event) events.push(finalResult.event);
+            if (finalResult?.gameOver?.over) {
+                this.state = 'GAME_OVER';
+                this.isGameActive = false;
+                return { success: true, events, finished: true, gameOver: finalResult.gameOver };
+            }
         }
-        return { success: true, events, finished: this.isPeggingFinished() };
+        return { success: true, events, finished: this.isPeggingFinished(), gameOver: { over: false } };
     }
 
     resetPegSegmentFrom(playerIndex) {
@@ -587,12 +640,12 @@ export default class CribbageManager {
 
     advancePegTurnAfterPlay(events = []) {
         const nextIndex = this.nextPlayerIndex(this.currentPlayerIndex);
-        this.resolvePegTurnFrom(nextIndex, this.currentPlayerIndex, events);
+        return this.resolvePegTurnFrom(nextIndex, this.currentPlayerIndex, events);
     }
 
     advancePegTurnAfterGo(events = []) {
         const nextIndex = this.nextPlayerIndex(this.currentPlayerIndex);
-        this.resolvePegTurnFrom(nextIndex, this.currentPlayerIndex, events);
+        return this.resolvePegTurnFrom(nextIndex, this.currentPlayerIndex, events);
     }
 
     resolvePegTurnFrom(startIndex, fallbackIndex, events = []) {
@@ -603,7 +656,7 @@ export default class CribbageManager {
 
             if (hasAnyLegalPegPlay(player.hand, this.runningTotal)) {
                 this.currentPlayerIndex = idx;
-                return;
+                return { over: false };
             }
 
             this.passedPlayers.add(idx);
@@ -611,11 +664,13 @@ export default class CribbageManager {
         }
 
         if (this.lastCardPlayerIndex !== null && this.runningTotal !== 31) {
-            this.awardPoints(this.lastCardPlayerIndex, 1);
+            const gameOver = this.awardPoints(this.lastCardPlayerIndex, 1);
             events.push(`${this.players[this.lastCardPlayerIndex].username} scores 1 for last card.`);
+            if (gameOver?.over) return gameOver;
         }
         events.push('No legal plays remain. Count resets to 0.');
         this.resetPegSegmentFrom(this.lastCardPlayerIndex ?? fallbackIndex);
+        return { over: false };
     }
 
     findNextEligiblePegPlayer(startIndex) {
@@ -637,12 +692,12 @@ export default class CribbageManager {
     finishPeggingIfComplete() {
         if (!this.isPeggingFinished()) return null;
         if (this.runningTotal > 0 && this.lastCardPlayerIndex !== null && this.runningTotal !== 31) {
-            this.awardPoints(this.lastCardPlayerIndex, 1);
+            const gameOver = this.awardPoints(this.lastCardPlayerIndex, 1);
             this.runningTotal = 0;
-            return `${this.players[this.lastCardPlayerIndex].username} scores 1 for last card.`;
+            return { event: `${this.players[this.lastCardPlayerIndex].username} scores 1 for last card.`, gameOver };
         }
         this.runningTotal = 0;
-        return null;
+        return { event: null, gameOver: { over: false } };
     }
 
     scoreHandsAndCrib() {
@@ -661,7 +716,22 @@ export default class CribbageManager {
             const handCards = this.showHands.get(player.id) || [];
             const scored = scoreShowHand(handCards, this.starterCard, false);
             if (scored.total > 0) {
-                this.awardPoints(playerIndex, scored.total);
+                const gameOver = this.awardPoints(playerIndex, scored.total);
+                if (gameOver?.over) {
+                    events.push(`🧮 ${player.username} hand scores **${scored.total}**`);
+                    handSummaries.push({
+                        playerId: player.id,
+                        playerName: player.username,
+                        cards: handCards.map(card => ({
+                            rankCode: card.rankCode,
+                            suitCode: card.suitCode,
+                            value: card.value,
+                        })),
+                        total: scored.total,
+                        breakdown: scored.breakdown,
+                    });
+                    return { events, cribSummary: null, handSummaries, gameOver };
+                }
             }
             events.push(`🧮 ${player.username} hand scores **${scored.total}**`);
             handSummaries.push({
@@ -680,7 +750,29 @@ export default class CribbageManager {
         const dealer = this.players[this.dealerIndex];
         const cribScore = scoreShowHand(this.crib, this.starterCard, true);
         if (cribScore.total > 0) {
-            this.awardPoints(this.dealerIndex, cribScore.total);
+            const gameOver = this.awardPoints(this.dealerIndex, cribScore.total);
+            if (gameOver?.over) {
+                events.push(`🗃️ ${dealer.username}'s crib scores **${cribScore.total}**`);
+                const cribSummary = {
+                    dealerName: dealer.username,
+                    dealerId: dealer.id,
+                    starter: this.starterCard ? cardToText(this.starterCard) : null,
+                    starterRaw: this.starterCard ? {
+                        rankCode: this.starterCard.rankCode,
+                        suitCode: this.starterCard.suitCode,
+                        value: this.starterCard.value,
+                    } : null,
+                    cards: this.crib.map(cardToText),
+                    rawCards: this.crib.map(card => ({
+                        rankCode: card.rankCode,
+                        suitCode: card.suitCode,
+                        value: card.value,
+                    })),
+                    total: cribScore.total,
+                    breakdown: cribScore.breakdown,
+                };
+                return { events, cribSummary, handSummaries, gameOver };
+            }
         }
         events.push(`🗃️ ${dealer.username}'s crib scores **${cribScore.total}**`);
         const cribSummary = {
@@ -701,7 +793,7 @@ export default class CribbageManager {
             total: cribScore.total,
             breakdown: cribScore.breakdown,
         };
-        return { events, cribSummary, handSummaries };
+        return { events, cribSummary, handSummaries, gameOver: { over: false } };
     }
 
     checkGameOver() {
@@ -712,6 +804,9 @@ export default class CribbageManager {
                 return {
                     over: true,
                     winnerText: team1 >= team2 ? `Team 1 wins ${team1}-${team2}` : `Team 2 wins ${team2}-${team1}`,
+                    team1Score: team1,
+                    team2Score: team2,
+                    winnerTeam: team1 >= team2 ? 1 : 2,
                 };
             }
             return { over: false };
@@ -722,13 +817,19 @@ export default class CribbageManager {
             .sort((a, b) => b.score - a.score)
             .find(p => p.score >= this.targetScore);
         if (!winner) return { over: false };
-        return { over: true, winnerText: `${winner.username} wins with ${winner.score} points` };
+        return {
+            over: true,
+            winnerText: `${winner.username} wins with ${winner.score} points`,
+            winnerPlayerId: winner.id,
+            winnerPlayerName: winner.username,
+            winnerScore: winner.score,
+        };
     }
 
     async finalizeHandAndAdvance() {
         this.state = 'SHOW';
-        const { events: scoringEvents, cribSummary, handSummaries } = this.scoreHandsAndCrib();
-        const gameOver = this.checkGameOver();
+        const { events: scoringEvents, cribSummary, handSummaries, gameOver: scoringGameOver } = this.scoreHandsAndCrib();
+        const gameOver = scoringGameOver?.over ? scoringGameOver : this.checkGameOver();
 
         if (this.publicAnnounce) {
             const starter = cardToText(this.starterCard);
@@ -753,7 +854,7 @@ export default class CribbageManager {
             this.state = 'GAME_OVER';
             this.isGameActive = false;
             if (this.publicAnnounce) {
-                await this.publicAnnounce(`🏁 **Game Over** — ${gameOver.winnerText}`);
+                await this.publicAnnounce(this.getGameOverAnnouncement(gameOver) || `🏁 **Game Over** — ${gameOver.winnerText}`);
             }
             return { finished: true, handSummaries, cribSummary };
         }
@@ -810,6 +911,14 @@ export default class CribbageManager {
 
                     this.showHands = new Map(this.players.map(p => [p.id, p.hand.slice()]));
                     const cut = this.cutStarter();
+                    if (cut.gameOver?.over) {
+                        if (this.publicAnnounce) {
+                            const heelText = cut.heelsAwarded ? `\n🂫 His heels: ${cut.heelsAwarded} scores 2.` : '';
+                            await this.publicAnnounce(`🔪 Starter cut: **${cardToText(cut.starterCard)}**${heelText}`);
+                            await this.publicAnnounce(this.getGameOverAnnouncement(cut.gameOver) || `🏁 **Game Over** — ${cut.gameOver.winnerText}`);
+                        }
+                        break;
+                    }
                     this.startPegging();
                     if (this.publicAnnounce) {
                         const heelText = cut.heelsAwarded ? `\n🂫 His heels: ${cut.heelsAwarded} scores 2.` : '';
@@ -829,11 +938,23 @@ export default class CribbageManager {
                     if (this.publicAnnounce) {
                         await this.publicAnnounce(`🤖 **${player.username}** says "Go".`);
                     }
+                    if (goResult.gameOver?.over) {
+                        if (this.publicAnnounce) {
+                            await this.publicAnnounce(this.getGameOverAnnouncement(goResult.gameOver) || `🏁 **Game Over** — ${goResult.gameOver.winnerText}`);
+                        }
+                        break;
+                    }
                 } else {
                     const playResult = this.playPegCard(player.id, `${selected.rankCode}${selected.suitCode}`);
                     if (playResult.error) break;
                     if (this.publicAnnounce) {
                         await this.publicAnnounce(`🤖 **${player.username}** plays **${cardToText(selected)}** (count ${this.runningTotal}).`);
+                    }
+                    if (playResult.gameOver?.over) {
+                        if (this.publicAnnounce) {
+                            await this.publicAnnounce(this.getGameOverAnnouncement(playResult.gameOver) || `🏁 **Game Over** — ${playResult.gameOver.winnerText}`);
+                        }
+                        break;
                     }
                 }
 

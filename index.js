@@ -1833,6 +1833,17 @@ const handleCribbageCommand = async (interaction) => {
             if (cut.error) {
                 return interaction.followUp({ content: `❌ ${cut.error}` });
             }
+            if (cut.gameOver?.over) {
+                const heelsLine = cut.heelsAwarded ? `\n🂫 His heels: **${cut.heelsAwarded}** scores 2.` : '';
+                await upsertCribbageTableMessage(interaction.channel, channelId, buildCribbageStatusPayload(game, [
+                    `🔪 Starter cut: **${formatCribbageCard(cut.starterCard)}**${heelsLine}`,
+                    '🏁 Game over reached during cut.',
+                ]));
+                const celebration = game.getGameOverAnnouncement(cut.gameOver);
+                if (celebration) await retryDiscordCall(() => interaction.channel.send({ content: celebration }));
+                persistCribbageGame(game);
+                return;
+            }
             game.startPegging();
             const heelsLine = cut.heelsAwarded ? `\n🂫 His heels: **${cut.heelsAwarded}** scores 2.` : '';
             await upsertCribbageTableMessage(interaction.channel, channelId, buildCribbageStatusPayload(game, [
@@ -1860,6 +1871,12 @@ const handleCribbageCommand = async (interaction) => {
             ...(result.events || []),
         ];
         await upsertCribbageTableMessage(interaction.channel, channelId, buildCribbageStatusPayload(game, publicLines));
+        if (result.gameOver?.over) {
+            const celebration = game.getGameOverAnnouncement(result.gameOver);
+            if (celebration) await retryDiscordCall(() => interaction.channel.send({ content: celebration }));
+            persistCribbageGame(game);
+            return;
+        }
 
         if (game.isPeggingFinished()) {
             const handResult = await game.finalizeHandAndAdvance();
@@ -1879,6 +1896,12 @@ const handleCribbageCommand = async (interaction) => {
         }
         await interaction.reply({ content: '✅ You called **Go**.', ephemeral: true });
         await upsertCribbageTableMessage(interaction.channel, channelId, buildCribbageStatusPayload(game, result.events));
+        if (result.gameOver?.over) {
+            const celebration = game.getGameOverAnnouncement(result.gameOver);
+            if (celebration) await retryDiscordCall(() => interaction.channel.send({ content: celebration }));
+            persistCribbageGame(game);
+            return;
+        }
 
         if (game.isPeggingFinished()) {
             const handResult = await game.finalizeHandAndAdvance();
@@ -2079,6 +2102,17 @@ client.on('interactionCreate', async interaction => {
                 if (cut.error) {
                     return interaction.followUp({ content: `❌ ${cut.error}` });
                 }
+                if (cut.gameOver?.over) {
+                    const heelsLine = cut.heelsAwarded ? `\n🂫 His heels: **${cut.heelsAwarded}** scores 2.` : '';
+                    await upsertCribbageTableMessage(interaction.channel, gameChannelId, buildCribbageStatusPayload(cribGame, [
+                        `🔪 Starter cut: **${formatCribbageCard(cut.starterCard)}**${heelsLine}`,
+                        '🏁 Game over reached during cut.',
+                    ]));
+                    const celebration = cribGame.getGameOverAnnouncement(cut.gameOver);
+                    if (celebration) await retryDiscordCall(() => interaction.channel.send({ content: celebration }));
+                    persistCribbageGame(cribGame);
+                    return;
+                }
                 cribGame.startPegging();
                 const heelsLine = cut.heelsAwarded ? `\n🂫 His heels: **${cut.heelsAwarded}** scores 2.` : '';
                 await upsertCribbageTableMessage(interaction.channel, gameChannelId, buildCribbageStatusPayload(cribGame, [
@@ -2119,6 +2153,12 @@ client.on('interactionCreate', async interaction => {
                 buildCribbageStatusPayload(cribGame, publicLines),
                 { forceRepost: true }
             );
+            if (result.gameOver?.over) {
+                const celebration = cribGame.getGameOverAnnouncement(result.gameOver);
+                if (celebration) await retryDiscordCall(() => interaction.channel.send({ content: celebration }));
+                persistCribbageGame(cribGame);
+                return;
+            }
 
             if (cribGame.isPeggingFinished()) {
                 const handResult = await cribGame.finalizeHandAndAdvance();
@@ -2148,6 +2188,12 @@ client.on('interactionCreate', async interaction => {
                 buildCribbageStatusPayload(cribGame, result.events),
                 { forceRepost: true }
             );
+            if (result.gameOver?.over) {
+                const celebration = cribGame.getGameOverAnnouncement(result.gameOver);
+                if (celebration) await retryDiscordCall(() => interaction.channel.send({ content: celebration }));
+                persistCribbageGame(cribGame);
+                return;
+            }
 
             if (cribGame.isPeggingFinished()) {
                 const handResult = await cribGame.finalizeHandAndAdvance();
