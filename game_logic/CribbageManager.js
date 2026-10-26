@@ -438,6 +438,7 @@ export default class CribbageManager {
             const dealer = this.players[this.dealerIndex];
             await this.publicAnnounce(
                 `🎴 **Cribbage Hand ${this.handNumber}**\nDealer: **${dealer.username}**\n` +
+                `Crib this hand: **${dealer.username}**\n` +
                 `All players discard **${this.config.discardCount}** card(s) using the private hand buttons.`
             );
         }

@@ -1340,13 +1340,15 @@ const buildCribbageHandPayload = (game, player, channelId, selectedCodes = []) =
 
     if (game.state === 'DISCARD') {
         const alreadyDiscarded = game.discardedPlayers.has(player.id);
+        const cribOwner = game.players[game.dealerIndex];
         if (alreadyDiscarded) {
             content += '\n\n✅ You already discarded this hand.';
         } else {
             const expected = game.config.discardCount;
             const remaining = Math.max(0, expected - selectedCodes.length);
             const selectedText = selectedCodes.length > 0 ? selectedCodes.join(' ') : 'None';
-            content += `\n\nDiscard ${expected} card(s) to the crib.`;
+            content += `\n\nCrib this hand: **${cribOwner?.username || 'n/a'}**`;
+            content += `\nDiscard ${expected} card(s) to the crib.`;
             content += `\nSelected: ${selectedText}`;
             if (remaining > 0) content += `\nChoose ${remaining} more card(s).`;
         }
@@ -1537,6 +1539,7 @@ const createCribbageStatusEmbed = (game) => {
             `**State:** ${displayState}`,
             `**Hand:** ${game.handNumber}`,
             game.players.length > 0 ? `**Dealer:** ${game.players[game.dealerIndex].username}` : null,
+            game.players.length > 0 ? `**Crib this hand:** ${game.players[game.dealerIndex].username}` : null,
             game.starterCard ? `**Cut Card:** ${formatCribbageCard(game.starterCard)}` : null,
             game.state === 'PEGGING' ? `**Current Points:** ${game.runningTotal}` : null,
             game.state === 'PEGGING' ? `**Turn:** ${turnDisplay}` : null,
@@ -1587,6 +1590,7 @@ const buildCribbageDealingPayload = (game) => {
         .setTitle(`🎴 Cribbage Hand ${game.handNumber} — Dealing`)
         .setDescription(
             `**Dealer:** ${game.players[game.dealerIndex]?.username || 'n/a'}\n` +
+            `**Crib this hand:** ${game.players[game.dealerIndex]?.username || 'n/a'}\n` +
             `**First to act:** ${firstPlayer?.username || 'n/a'}\n` +
             `Each player receives **${game.config.handSize}** cards`
         )
